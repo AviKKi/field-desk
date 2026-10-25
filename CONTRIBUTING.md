@@ -7,6 +7,7 @@ pnpm install
 pnpm env:setup
 pnpm db:migrate
 pnpm admin:create
+pnpm db:seed
 pnpm dev
 ```
 
@@ -18,17 +19,18 @@ For unattended admin creation, supply `ADMIN_NAME`, `ADMIN_EMAIL`, and `ADMIN_PA
 
 ## Commands
 
-| Command             | Purpose                                                |
-| ------------------- | ------------------------------------------------------ |
-| `pnpm dev`          | Build shared contracts, then watch all three packages  |
-| `pnpm dev:server`   | Build shared contracts and watch the API               |
-| `pnpm dev:client`   | Run Vite; build shared first on a fresh checkout       |
-| `pnpm check`        | Lint, type-check, run API tests, and build             |
-| `pnpm format:check` | Check formatting                                       |
-| `pnpm db:generate`  | Generate a migration after changing the Drizzle schema |
-| `pnpm db:migrate`   | Apply committed migrations                             |
-| `pnpm db:studio`    | Open Drizzle Studio                                    |
-| `pnpm admin:create` | Bootstrap an admin without public privilege escalation |
+| Command             | Purpose                                                                   |
+| ------------------- | ------------------------------------------------------------------------- |
+| `pnpm dev`          | Build shared contracts, then watch all three packages                     |
+| `pnpm dev:server`   | Build shared contracts and watch the API                                  |
+| `pnpm dev:client`   | Run Vite; build shared first on a fresh checkout                          |
+| `pnpm check`        | Lint, type-check, run API tests, and build                                |
+| `pnpm format:check` | Check formatting                                                          |
+| `pnpm db:generate`  | Generate a migration after changing the Drizzle schema                    |
+| `pnpm db:migrate`   | Apply committed migrations                                                |
+| `pnpm db:seed`      | Add the local catalog, customers, and staff desks after creating an admin |
+| `pnpm db:studio`    | Open Drizzle Studio                                                       |
+| `pnpm admin:create` | Bootstrap an admin without public privilege escalation                    |
 
 Keep migration SQL and its Drizzle metadata together in version control. Migrations are explicit; starting the API never changes the schema.
 
@@ -46,3 +48,4 @@ Keep browser code out of `server` and server code out of `shared`. Shared contra
 - [Documentation index](docs/README.md)
 - [Architecture and deployment](docs/architecture.md)
 - [API reference](docs/api.md)
+- [Operations desk](docs/operations.md)

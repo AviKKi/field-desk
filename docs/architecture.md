@@ -1,6 +1,6 @@
 # Architecture
 
-The repository uses sibling pnpm packages, following the broad layout of `kamdhenu-crm` without importing its implementation or credentials.
+The repository uses sibling pnpm packages for the React client, NestJS API, and shared contracts.
 
 ```text
 client/src/
@@ -12,7 +12,8 @@ server/src/
   auth/           JWT cookies, database sessions, authentication and role guards
   users/          Account creation, password hashing, admin management
   database/       Drizzle schema, connection lifecycle, migration runner
-  workspace/      Protected Sales and KAM extension points
+  crm/            Order, shipping, account, reward, and activity endpoints
+  workspace/      Sales and KAM access endpoints
   common/         Zod validation pipe
   config/         Validated environment configuration
 shared/src/       Zod request contracts, public response types, roles
@@ -28,7 +29,7 @@ JWTs use HS256, a validated secret of at least 32 characters, an issuer, an audi
 
 Every protected request verifies the JWT, checks its live database session, and reads the account status. Logout deletes that session. Admin changes to role or account status revoke every session belonging to the target user. Admins cannot change their own role or status; a second admin must do that. A transaction protects the last active admin.
 
-The default session lifetime is eight hours. There is no refresh-token flow; expiry requires another sign-in. Expired session rows are pruned when a session is created. Email verification, password recovery, MFA, and business record workflows are outside this starter’s scope.
+The default session lifetime is eight hours. There is no refresh-token flow; expiry requires another sign-in. Expired session rows are pruned when a session is created. Email verification, password recovery, MFA, and external payment rails are outside this application’s scope.
 
 Global Nest guards apply rate limiting, authentication, and then authorization. Only explicitly public routes bypass authentication. Public registration accepts no role field and always assigns Sales. The API validates all request bodies and queries with strict shared Zod schemas. User responses explicitly select public columns.
 
@@ -40,14 +41,14 @@ SQLite uses `better-sqlite3` through Drizzle, with WAL, foreign keys, a busy tim
 
 ## Configuration and deployment
 
-| Variable              | Default                 | Purpose                                                      |
-| --------------------- | ----------------------- | ------------------------------------------------------------ |
-| `NODE_ENV`            | `development`           | `development`, `test`, or `production`                       |
-| `PORT`                | `3000`                  | API port                                                     |
-| `CLIENT_ORIGIN`       | `http://localhost:5173` | Exact allowed HTTP(S) browser origin, without trailing slash |
+| Variable              | Default                   | Purpose                                                      |
+| --------------------- | ------------------------- | ------------------------------------------------------------ |
+| `NODE_ENV`            | `development`             | `development`, `test`, or `production`                       |
+| `PORT`                | `3000`                    | API port                                                     |
+| `CLIENT_ORIGIN`       | `http://localhost:5173`   | Exact allowed HTTP(S) browser origin, without trailing slash |
 | `DATABASE_PATH`       | `./data/crm-workspace.db` | SQLite file path, relative to the server working directory   |
-| `JWT_SECRET`          | Required                | Random secret of at least 32 characters                      |
-| `SESSION_TTL_SECONDS` | `28800`                 | Session duration, 60–86400 seconds                           |
+| `JWT_SECRET`          | Required                  | Random secret of at least 32 characters                      |
+| `SESSION_TTL_SECONDS` | `28800`                   | Session duration, 60–86400 seconds                           |
 
 Build with `pnpm build`; run the API with `pnpm --filter @crm/server start`. Serve `client/dist` as static assets with SPA fallback to `index.html`, and proxy `/api` to NestJS under the same public origin. Vite’s proxy applies only in development. Apply migrations separately before starting a release. Keep `server/drizzle` alongside the server build for the migration command.
 
@@ -63,3 +64,4 @@ Implementation references: [NestJS authentication](https://docs.nestjs.com/secur
 - [Project overview](../README.md)
 - [Development workflow](../CONTRIBUTING.md)
 - [API reference](api.md)
+- [Operations desk](operations.md)

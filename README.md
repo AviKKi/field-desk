@@ -1,17 +1,19 @@
 # FieldDesk CRM
 
-A pnpm workspace with React, shadcn/ui, Zustand, NestJS, Drizzle, SQLite, and email/password JWT authentication.
+A local CRM for sales, warehouse operations, customer accounts, and finance, built with React, shadcn/ui, Zustand, NestJS, Drizzle, and SQLite in a pnpm workspace.
 
-| Package  | Responsibility                                                                    |
-| -------- | --------------------------------------------------------------------------------- |
-| `client` | React + Vite application, shadcn/ui components, in-memory Zustand auth state      |
-| `server` | NestJS API, authentication, role enforcement, user management, SQLite persistence |
-| `shared` | Zod request schemas, public API types, role definitions                           |
+| Area           | Features                                                                              |
+| -------------- | ------------------------------------------------------------------------------------- |
+| Orders         | Commercial revisions, submission, approval, rejection, and cancellation               |
+| Fulfillment    | Loading, multiple shipments, partial deliveries, returns, and shipment corrections    |
+| Accounts       | Customer receipts, cash allocation, credits, applications, and recorded refunds       |
+| Rewards        | Locked and available points, redemption history, and pending recoveries               |
+| Activity       | Staff attribution, document history, posting details, retries, and sample workflows   |
+| Administration | Email/password sign-in, user management, and Sales/KAM/Warehouse/Accounts/Admin roles |
 
-Sales, Key Account Manager (KAM), and Admin roles have dedicated access. Admins can create team members, assign roles, and activate or deactivate accounts. New registrations receive Sales access.
+Use the operations desk to record individual activities or load a sample workflow and advance it one step at a time. Account summaries and document histories update from the API after each action.
 
-
-Start with [local development](CONTRIBUTING.md), then see the [documentation index](docs/README.md) for architecture and API details.
+See [development setup](CONTRIBUTING.md) to run locally and the [documentation index](docs/README.md) for operating and API references.
 
 ## Related
 

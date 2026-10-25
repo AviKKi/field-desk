@@ -1,30 +1,81 @@
 # API reference
 
-All routes use `/api`. Body-bearing writes accept JSON. Authentication uses the `crm_session` cookie. Browser writes need the configured Origin; command-line clients may omit Origin.
+All routes use `/api`. Body-bearing writes accept JSON. Authentication uses the `crm_session` HttpOnly cookie. Browser writes need the configured Origin; command-line clients may omit Origin.
 
-| Method | Route                 | Access            | Behavior                                                                    |
-| ------ | --------------------- | ----------------- | --------------------------------------------------------------------------- |
-| GET    | `/health`             | Public            | Database connectivity check                                                 |
-| POST   | `/auth/register`      | Public, 5/min/IP  | `{ name, email, password }`; creates Sales user and signs in                |
-| POST   | `/auth/login`         | Public, 10/min/IP | `{ email, password }`; signs in                                             |
-| GET    | `/auth/me`            | Signed in         | `{ user }`                                                                  |
-| POST   | `/auth/logout`        | Signed in         | Revokes current session, clears cookie, returns 204                         |
-| GET    | `/users`              | Admin             | Paginated team list                                                         |
-| POST   | `/users`              | Admin             | `{ name, email, password, role }`; creates user, without signing in as them |
-| PATCH  | `/users/:id`          | Admin             | `{ role?, active? }`; revokes target’s sessions                             |
-| GET    | `/workspace/sales`    | Sales, Admin      | Sales workspace metadata                                                    |
-| GET    | `/workspace/accounts` | KAM, Admin        | Key account workspace metadata                                              |
+## Authentication and staff
 
-Other routes use a default limit of 120 requests/minute/IP. Roles are exactly `SALES`, `KAM`, `ADMIN`. Admins may access both workspaces. Sales and KAM cannot access one another’s workspace or team management.
+| Method | Route            | Access                                 |
+| ------ | ---------------- | -------------------------------------- |
+| GET    | `/health`        | Public                                 |
+| POST   | `/auth/register` | Public; creates a Sales account        |
+| POST   | `/auth/login`    | Public                                 |
+| GET    | `/auth/me`       | Signed in                              |
+| POST   | `/auth/logout`   | Signed in; revokes the current session |
+| GET    | `/users`         | Admin; paginated search                |
+| POST   | `/users`         | Admin; create a staff account          |
+| PATCH  | `/users/:id`     | Admin; change role or active status    |
 
-`GET /users` accepts `search` (up to 100 characters), `page` (default 1), and `pageSize` (default 20, maximum 100). Search is a literal case-insensitive name/email substring. Its response is `{ users, total, page, pageSize }`.
+Roles are `SALES`, `KAM`, `WAREHOUSE`, `ACCOUNTS`, and `ADMIN`. Public user fields are `{ id, name, email, role, active, createdAt }`. Registration accepts `{ name, email, password }`; login accepts `{ email, password }`. User creation also requires `role`. User updates accept `role` and/or `active` and revoke the target's sessions. Self-directed changes require another administrator.
 
-The public user shape is `{ id, name, email, role, active, createdAt }`. IDs are UUIDs and creation timestamps are ISO strings. Auth routes and user mutations return `{ user }`. JWTs and password hashes are never response fields.
+`GET /users` accepts `search`, `page`, and `pageSize` (maximum 100), and returns `{ users, total, page, pageSize }`.
 
-Validation errors return 400 with a message and field issues. Missing/invalid sessions return 401, role failures return 403, missing users return 404, duplicate emails return 409, unsupported body content types return 415, and rate limits return 429. A self-directed role/status update returns 400. Accounts are deactivated rather than deleted.
+## CRM reads and reference data
+
+| Method | Route                        | Purpose                                                     |
+| ------ | ---------------------------- | ----------------------------------------------------------- |
+| GET    | `/crm/bootstrap`             | Customers, catalog, orders, and available staff             |
+| GET    | `/crm/orders/:id`            | Order, lines, shipments, revisions, approvals, and timeline |
+| GET    | `/crm/orders/:id/timeline`   | Order activity                                              |
+| GET    | `/crm/customers/:id/summary` | Account position, charges, credits, and points              |
+| GET    | `/crm/customers/:id/ledger`  | Posting history and source documents                        |
+| GET    | `/crm/actions/:id/trace`     | Recorded action result; requester, actor, or Admin only     |
+| POST   | `/crm/customers`             | Create `{ name, code }`; Sales, Accounts, or Admin          |
+
+The signed-in user's active role governs operations. Only an Admin may choose another active staff member through `actorId`; the submitted payload cannot grant that staff member a different role.
+
+## Activities
+
+Send `POST /crm/actions` with this envelope:
+
+```json
+{
+  "command": {
+    "type": "RECEIVE_CUSTOMER_PAYMENT",
+    "payload": {
+      "customerId": "customer-north",
+      "amountPaise": 10000,
+      "reference": "BANK-2026-01"
+    }
+  },
+  "idempotencyKey": "a-unique-request-key",
+  "expectedVersion": 0
+}
+```
+
+Order operations use the order's version; account operations use the customer's version. Every applied action advances the customer and its order versions. Reuse the complete original envelope for a retry. A reused key with different input returns an idempotency conflict. Resolve a conflict by refreshing and submitting the intended new action with a fresh key and current version.
+
+Supported types are `PUNCH_ORDER`, `EDIT_ORDER`, `SUBMIT_ORDER`, `APPROVE_ORDER`, `REJECT_ORDER`, `START_LOADING`, `DISPATCH_SHIPMENT`, `CONFIRM_DELIVERY`, `CANCEL_REMAINDER`, `RECORD_RETURN`, `RECEIVE_CUSTOMER_PAYMENT`, `ALLOCATE_PAYMENT`, `REDEEM_POINTS`, `ISSUE_CREDIT_NOTE`, `APPLY_CREDIT_NOTE`, `REFUND_CREDIT_NOTE`, and `CORRECT_DISPATCHED_ORDER`.
+
+The exact payload schemas and response types are exported by `@crm/shared/crm`. Unknown fields are rejected. Monetary fields are integer paise. Receipts accept a customer rather than an order identifier. A correction includes its reason, evidence, authorization reference, additional units, delivered quantities, and explicit physical dispatch details.
+
+Action responses contain `status`, `actionId`, `errors`, `decisions`, `effects`, `trace`, `aggregateVersions`, and document `references`. Status is `APPLIED`, `REJECTED`, `NEEDS_DECISION`, or `CONFLICT`. Domain outcomes use this envelope; malformed requests return 400 and authentication or impersonation failures use 401/403. No domain records are committed on rejected or unresolved actions. The request outcome is retained for retries.
+
+## Local sample data
+
+| Method | Route                    | Purpose                                                               |
+| ------ | ------------------------ | --------------------------------------------------------------------- |
+| POST   | `/crm/seed`              | Add catalog, customers, and staff desks without deleting transactions |
+| POST   | `/crm/reset`             | Reset with `{ "confirmation": "RESET CRM DATA" }`                     |
+| POST   | `/crm/scenarios/:id/run` | Run a complete sample workflow                                        |
+| POST   | `/crm/samples`           | Start `{ "scenarioId": "partial-delivery" }`                          |
+| POST   | `/crm/samples/:id/step`  | Advance the saved workflow by one activity                            |
+| POST   | `/crm/samples/:id/run`   | Complete the saved workflow                                           |
+
+These routes require Admin and are disabled in production. Workflow identifiers are exported as `SCENARIOS` in the shared package. Each saved workflow belongs to its initiating administrator.
 
 ## Related
 
 - [Documentation index](README.md)
+- [Operations desk](operations.md)
 - [Architecture](architecture.md)
-- [Development workflow](../CONTRIBUTING.md)
+- [Development setup](../CONTRIBUTING.md)
