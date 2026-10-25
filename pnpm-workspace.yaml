@@ -1,0 +1,9 @@
+packages:
+  - client
+  - server
+  - shared
+
+onlyBuiltDependencies:
+  - '@nestjs/core'
+  - better-sqlite3
+  - esbuild

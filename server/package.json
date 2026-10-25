@@ -1,0 +1,44 @@
+{
+  "name": "@crm/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsc -p tsconfig.build.json && concurrently -k -n types,api \"tsc -p tsconfig.build.json --watch --preserveWatchOutput\" \"node --watch --env-file-if-exists=.env dist/main.js\"",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node --env-file-if-exists=.env dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test --test-concurrency=1 dist-test/test/*.test.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsc -p tsconfig.build.json && node --env-file-if-exists=.env dist/database/migrate.js",
+    "db:studio": "drizzle-kit studio",
+    "admin:create": "tsc -p tsconfig.build.json && node --env-file-if-exists=.env dist/scripts/create-admin.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.8",
+    "@nestjs/config": "^4.0.2",
+    "@nestjs/core": "^11.1.8",
+    "@nestjs/jwt": "^11.0.1",
+    "@nestjs/platform-express": "^11.1.8",
+    "@nestjs/throttler": "^6.4.0",
+    "@crm/shared": "workspace:*",
+    "better-sqlite3": "^12.4.1",
+    "cookie-parser": "^1.4.7",
+    "drizzle-orm": "^0.44.7",
+    "helmet": "^8.1.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^11.1.8",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cookie-parser": "^1.4.9",
+    "@types/express": "^5.0.5",
+    "@types/supertest": "^6.0.3",
+    "concurrently": "^9.2.1",
+    "dotenv": "^17.2.3",
+    "drizzle-kit": "^0.31.6",
+    "supertest": "^7.1.4"
+  }
+}

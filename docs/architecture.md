@@ -1,0 +1,65 @@
+# Architecture
+
+The repository uses sibling pnpm packages, following the broad layout of `kamdhenu-crm` without importing its implementation or credentials.
+
+```text
+client/src/
+  components/ui/  Owned shadcn/ui-style Radix components
+  pages/          Route screens
+  store/          In-memory Zustand session state
+  lib/            HTTP client and utilities
+server/src/
+  auth/           JWT cookies, database sessions, authentication and role guards
+  users/          Account creation, password hashing, admin management
+  database/       Drizzle schema, connection lifecycle, migration runner
+  workspace/      Protected Sales and KAM extension points
+  common/         Zod validation pipe
+  config/         Validated environment configuration
+shared/src/       Zod request contracts, public response types, roles
+```
+
+Shared builds to an ESM package with declarations; both applications import its public package export. There are no source aliases between packages. NestJS is compiled with TypeScript decorator metadata, including in tests and development.
+
+## Authentication
+
+Passwords use Node.js scrypt with independent 16-byte salts, a 64-byte derived key, and parameters `N=32768, r=8, p=1`. Unknown accounts perform password verification against a dummy hash. Passwords are limited to 12–128 characters when accounts are created. Login accepts existing passwords up to that same maximum.
+
+JWTs use HS256, a validated secret of at least 32 characters, an issuer, an audience, and an expiry. They contain a subject and session ID; the current role is read from the database on each request. The session cookie is HttpOnly, SameSite Strict, scoped to `/api`, and Secure in production. Tokens are never returned in response JSON or stored in localStorage. Zustand holds only the current public user in memory and hydrates from `/auth/me` on reload.
+
+Every protected request verifies the JWT, checks its live database session, and reads the account status. Logout deletes that session. Admin changes to role or account status revoke every session belonging to the target user. Admins cannot change their own role or status; a second admin must do that. A transaction protects the last active admin.
+
+The default session lifetime is eight hours. There is no refresh-token flow; expiry requires another sign-in. Expired session rows are pruned when a session is created. Email verification, password recovery, MFA, and business record workflows are outside this starter’s scope.
+
+Global Nest guards apply rate limiting, authentication, and then authorization. Only explicitly public routes bypass authentication. Public registration accepts no role field and always assigns Sales. The API validates all request bodies and queries with strict shared Zod schemas. User responses explicitly select public columns.
+
+Browser writes must have the configured Origin, and cross-site Fetch Metadata is rejected. Non-browser clients may omit Origin. JSON content types are required for body-bearing writes. SameSite cookies and origin checks work together against CSRF, including login CSRF. Helmet supplies security headers; API responses disable caching. Credential endpoints have stricter IP-based limits. Rate limits are process-local, suitable for a single-instance starter.
+
+## Database
+
+SQLite uses `better-sqlite3` through Drizzle, with WAL, foreign keys, a busy timeout, unique emails, role/status checks, session foreign keys, and indexes. Database files are ignored by version control. `pnpm db:migrate` applies committed migrations; `pnpm db:generate` creates the next migration from the schema. Production startup does not mutate the schema.
+
+## Configuration and deployment
+
+| Variable              | Default                 | Purpose                                                      |
+| --------------------- | ----------------------- | ------------------------------------------------------------ |
+| `NODE_ENV`            | `development`           | `development`, `test`, or `production`                       |
+| `PORT`                | `3000`                  | API port                                                     |
+| `CLIENT_ORIGIN`       | `http://localhost:5173` | Exact allowed HTTP(S) browser origin, without trailing slash |
+| `DATABASE_PATH`       | `./data/crm-workspace.db` | SQLite file path, relative to the server working directory   |
+| `JWT_SECRET`          | Required                | Random secret of at least 32 characters                      |
+| `SESSION_TTL_SECONDS` | `28800`                 | Session duration, 60–86400 seconds                           |
+
+Build with `pnpm build`; run the API with `pnpm --filter @crm/server start`. Serve `client/dist` as static assets with SPA fallback to `index.html`, and proxy `/api` to NestJS under the same public origin. Vite’s proxy applies only in development. Apply migrations separately before starting a release. Keep `server/drizzle` alongside the server build for the migration command.
+
+Production requires `NODE_ENV=production`, an HTTPS `CLIENT_ORIGIN`, TLS at the reverse proxy, a durable volume for SQLite, and a secret supplied by your environment. Keep frontend and API on the same public origin for this cookie configuration. Back up SQLite with an online backup or a consistent snapshot that includes WAL state. Changing `JWT_SECRET` signs out existing sessions.
+
+The starter does not trust forwarded IP headers. If deploying behind a reverse proxy, configure Express trust for your specific proxy topology so IP throttling uses the correct client address; do not blindly trust arbitrary forwarding headers. Multi-instance deployments need a shared rate-limit store and a database architecture suitable for concurrent hosts.
+
+Implementation references: [NestJS authentication](https://docs.nestjs.com/security/authentication), [Drizzle SQLite drivers](https://orm.drizzle.team/docs/get-started-sqlite), [shadcn/ui with Vite](https://ui.shadcn.com/docs/installation/vite), [Zustand stores](https://zustand.docs.pmnd.rs/reference/apis/create.html).
+
+## Related
+
+- [Documentation index](README.md)
+- [Project overview](../README.md)
+- [Development workflow](../CONTRIBUTING.md)
+- [API reference](api.md)

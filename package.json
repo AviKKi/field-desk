@@ -1,0 +1,38 @@
+{
+  "name": "crm-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.18.3",
+  "engines": {
+    "node": ">=22.14.0 <25",
+    "pnpm": ">=10 <11"
+  },
+  "scripts": {
+    "env:setup": "node scripts/setup.mjs",
+    "predev": "pnpm --filter @crm/shared build",
+    "dev": "pnpm -r --parallel dev",
+    "dev:client": "pnpm --filter @crm/client dev",
+    "dev:server": "pnpm --filter @crm/shared build && pnpm --filter @crm/server dev",
+    "build": "pnpm --filter @crm/shared build && pnpm --parallel --filter @crm/client --filter @crm/server build",
+    "typecheck": "pnpm --filter @crm/shared build && pnpm -r typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "pnpm --filter @crm/shared build && pnpm --filter @crm/server test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "db:generate": "pnpm --filter @crm/server db:generate",
+    "db:migrate": "pnpm --filter @crm/shared build && pnpm --filter @crm/server db:migrate",
+    "db:studio": "pnpm --filter @crm/server db:studio",
+    "admin:create": "pnpm --filter @crm/shared build && pnpm --filter @crm/server admin:create"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^24.10.0",
+    "eslint": "^9.39.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "globals": "^16.5.0",
+    "prettier": "^3.6.2",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.0"
+  }
+}

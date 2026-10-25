@@ -1,0 +1,71 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #eaf1eb;
+  --color-secondary-foreground: #285440;
+  --color-muted: #f0f1ed;
+  --color-muted-foreground: #747970;
+  --color-accent: #eef2ec;
+  --color-accent-foreground: #203c2f;
+  --color-destructive: #b43f3f;
+  --color-border: #e4e7df;
+  --color-input: #dce1d8;
+  --color-ring: #56816b;
+  --font-sans:
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+:root {
+  --background: #f9faf6;
+  --foreground: #252e27;
+  --card: #ffffff;
+  --primary: #2d6048;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply m-0 bg-background font-sans text-foreground;
+  }
+  button:not(:disabled),
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+  ::selection {
+    background: #c5e6d2;
+    color: #142c28;
+  }
+}
+.auth-panel::after {
+  content: '';
+  position: absolute;
+  width: 700px;
+  height: 700px;
+  border: 1px solid #ffffff08;
+  border-radius: 50%;
+  right: -450px;
+  bottom: -320px;
+  box-shadow:
+    0 0 0 65px #ffffff03,
+    0 0 0 130px #ffffff02,
+    0 0 0 195px #ffffff02;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

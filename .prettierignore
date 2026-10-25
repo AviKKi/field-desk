@@ -1,0 +1,5 @@
+node_modules
+dist
+dist-test
+pnpm-lock.yaml
+server/drizzle/meta
