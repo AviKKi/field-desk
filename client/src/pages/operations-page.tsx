@@ -208,6 +208,7 @@ export function OperationsPage() {
   const [pending, setPending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
+  const [competingResults, setCompetingResults] = useState<ActionResult[]>([]);
   const [report, setReport] = useState<ScenarioReport | null>(null);
   const [scenario, setScenario] = useState<string>(SCENARIOS[0][0]);
   const [customerDialog, setCustomerDialog] = useState(false);
@@ -216,6 +217,7 @@ export function OperationsPage() {
   const [location, setLocation] = useState('');
   const [correctionShipment, setCorrectionShipment] = useState('');
   const lastEnvelope = useRef<ActionEnvelope | null>(null);
+  const lastRequestResult = useRef('');
   const customerId = bootstrap?.customers.some(
     (row) => row.id === selection.customerId,
   )
@@ -326,11 +328,38 @@ export function OperationsPage() {
         body: JSON.stringify(envelope),
       });
       setResult(response);
+      lastRequestResult.current = response.actionId;
+      setCompetingResults([]);
       if (response.references.orderId)
         selection.selectOrder(response.references.orderId);
       refresh();
     } catch (failure) {
       setError(errorMessage(failure));
+    } finally {
+      setPending(false);
+    }
+  }
+  async function sendCompeting(envelope: ActionEnvelope) {
+    setPending(true);
+    setError('');
+    try {
+      const values = await Promise.all(
+        [envelope, { ...envelope, idempotencyKey: crypto.randomUUID() }].map(
+          (input) =>
+            api<ActionResult>('/crm/actions', {
+              method: 'POST',
+              body: JSON.stringify(input),
+            }),
+        ),
+      );
+      setCompetingResults(values);
+      setResult(values[0]!);
+      lastEnvelope.current = envelope;
+      lastRequestResult.current = values[0]!.actionId;
+      refresh();
+    } catch (failure) {
+      setError(errorMessage(failure));
+      refresh();
     } finally {
       setPending(false);
     }
@@ -424,7 +453,7 @@ export function OperationsPage() {
           ).toISOString();
       }
       const command = crmActionSchema.parse({ type: operation, payload });
-      void send({
+      const envelope: ActionEnvelope = {
         command,
         actorId: actor.id,
         idempotencyKey: crypto.randomUUID(),
@@ -432,7 +461,11 @@ export function OperationsPage() {
           accountOperation || operation === 'PUNCH_ORDER'
             ? summary.customer.version
             : detail?.order.version,
-      });
+      };
+      const submitter = (event.nativeEvent as SubmitEvent).submitter;
+      if (submitter?.getAttribute('data-mode') === 'compete')
+        void sendCompeting(envelope);
+      else void send(envelope);
     } catch (failure) {
       setError(errorMessage(failure));
     }
@@ -523,9 +556,12 @@ export function OperationsPage() {
     }
   }
   function exportReport() {
-    const blob = new Blob([JSON.stringify(report ?? result, null, 2)], {
-      type: 'application/json',
-    });
+    const blob = new Blob(
+      [JSON.stringify({ activity: result, workflow: report }, null, 2)],
+      {
+        type: 'application/json',
+      },
+    );
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -1160,6 +1196,23 @@ export function OperationsPage() {
                     {pending ? 'Saving…' : 'Record activity'}
                     <ArrowRight />
                   </Button>
+                  {[
+                    'RECORD_RETURN',
+                    'APPLY_CREDIT_NOTE',
+                    'REDEEM_POINTS',
+                  ].includes(operation) && (
+                    <Button
+                      type="submit"
+                      data-mode="compete"
+                      variant="outline"
+                      className="w-full"
+                      disabled={
+                        pending || !summary || (!accountOperation && !detail)
+                      }
+                    >
+                      Send competing requests
+                    </Button>
+                  )}
                 </form>
               </CardContent>
             </Card>
@@ -1452,7 +1505,11 @@ export function OperationsPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={pending || !lastEnvelope.current}
+                        disabled={
+                          pending ||
+                          !lastEnvelope.current ||
+                          result.actionId !== lastRequestResult.current
+                        }
                         onClick={() => {
                           if (lastEnvelope.current)
                             void send(lastEnvelope.current);
@@ -1466,6 +1523,24 @@ export function OperationsPage() {
                         Export activity
                       </Button>
                     </div>
+                    {competingResults.length > 0 && (
+                      <div className="space-y-2 border-t pt-3">
+                        <p className="text-xs text-muted-foreground">
+                          Two requests submitted against the same record
+                          version.
+                        </p>
+                        {competingResults.map((value, index) => (
+                          <button
+                            key={value.actionId}
+                            className="flex w-full items-center justify-between rounded-lg border p-2 text-xs"
+                            onClick={() => setResult(value)}
+                          >
+                            Request {index + 1}
+                            <Status value={value.status} />
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )}

@@ -22,7 +22,9 @@ The order table keeps ordered, shipped, delivered, returned, canceled, and open 
 
 Account activity includes charges and adjustments, receipts, allocations, credit notes and applications, recorded refunds, reward postings, redemptions, returns, and shipment corrections. Expand an entry for its identifiers and source references.
 
-An activity result shows whether it was applied, rejected, needs more information, or encountered a concurrent change. Expand **Recorded changes** to inspect the database records affected. **Retry request** resends the original request key; it does not create a fresh activity. **Export activity** downloads the current result or sample workflow report as JSON.
+An activity result shows whether it was applied, rejected, needs more information, or encountered a concurrent change. Expand **Recorded changes** to inspect the database records affected. **Retry request** resends the original request key; it does not create a fresh activity. **Export activity** downloads the current result and any loaded sample workflow report as JSON.
+
+For returns, credit applications, and point redemptions, **Send competing requests** submits the same activity twice with separate request keys and the same record version. The two outcomes can be inspected separately.
 
 ## Sample workflows
 

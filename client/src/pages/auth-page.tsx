@@ -74,7 +74,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             </span>
           </h1>
           <p className="mt-6 max-w-sm text-base leading-relaxed text-white/60">
-            Bring your sales team, key account managers, and admins together in
+            Bring sales, warehouse, customer accounts, and finance together in
             one place.
           </p>
           <div className="mt-10 space-y-4">
