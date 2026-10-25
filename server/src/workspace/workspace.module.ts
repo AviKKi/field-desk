@@ -10,7 +10,7 @@ class WorkspaceController {
     return {
       title: 'Sales workspace',
       description:
-        'Your workspace for sales operations. Business modules can be added here.',
+        'Create orders, submit commercial changes, and follow fulfillment at the operations desk.',
       role: user.role,
     };
   }
@@ -21,7 +21,7 @@ class WorkspaceController {
     return {
       title: 'Key accounts',
       description:
-        'Your workspace for key account operations. Business modules can be added here.',
+        'Review commercial revisions and authorized shipment corrections at the operations desk.',
       role: user.role,
     };
   }

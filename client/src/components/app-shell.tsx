@@ -2,13 +2,11 @@ import { useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import {
   ArrowUpRight,
-  BriefcaseBusiness,
   ChevronRight,
   LayoutDashboard,
   LogOut,
   Menu,
   ShieldCheck,
-  Users,
   X,
 } from 'lucide-react';
 import { canAccess, ROLE_LABELS } from '@crm/shared/roles';
@@ -21,14 +19,7 @@ import { cn } from '@/lib/utils';
 import { errorMessage } from '@/lib/api';
 
 const navigation = [
-  { to: '/', label: 'Overview', icon: LayoutDashboard, area: null },
-  {
-    to: '/sales',
-    label: 'Sales workspace',
-    icon: BriefcaseBusiness,
-    area: 'sales',
-  },
-  { to: '/accounts', label: 'Key accounts', icon: Users, area: 'accounts' },
+  { to: '/', label: 'Operations', icon: LayoutDashboard, area: null },
   { to: '/users', label: 'Team members', icon: ShieldCheck, area: 'users' },
 ] as const;
 
@@ -91,7 +82,7 @@ export function AppShell() {
         </Link>
         <div className="mb-7 flex items-center gap-3 rounded-lg border bg-background p-3">
           <span className="grid size-9 place-items-center rounded-lg bg-secondary text-sm font-semibold text-primary">
-            RE
+            FD
           </span>
           <div>
             <p className="text-sm font-medium">Team workspace</p>

@@ -16,19 +16,14 @@ import { Loading } from '@/components/feedback';
 const AuthPage = lazy(() =>
   import('@/pages/auth-page').then((module) => ({ default: module.AuthPage })),
 );
-const OverviewPage = lazy(() =>
-  import('@/pages/overview-page').then((module) => ({
-    default: module.OverviewPage,
+const OperationsPage = lazy(() =>
+  import('@/pages/operations-page').then((module) => ({
+    default: module.OperationsPage,
   })),
 );
 const UsersPage = lazy(() =>
   import('@/pages/users-page').then((module) => ({
     default: module.UsersPage,
-  })),
-);
-const WorkspacePage = lazy(() =>
-  import('@/pages/workspace-page').then((module) => ({
-    default: module.WorkspacePage,
   })),
 );
 import { useAuthStore } from '@/store/auth-store';
@@ -106,7 +101,7 @@ export function App() {
           <Route path="/register" element={<AuthPage register />} />
           <Route element={<RequireAuth />}>
             <Route element={<AppShell />}>
-              <Route index element={<OverviewPage />} />
+              <Route index element={<OperationsPage />} />
               <Route
                 path="users"
                 element={
@@ -119,7 +114,7 @@ export function App() {
                 path="sales"
                 element={
                   <RequireRole area="sales">
-                    <WorkspacePage area="sales" />
+                    <Navigate to="/" replace />
                   </RequireRole>
                 }
               />
@@ -127,7 +122,7 @@ export function App() {
                 path="accounts"
                 element={
                   <RequireRole area="accounts">
-                    <WorkspacePage area="accounts" />
+                    <Navigate to="/" replace />
                   </RequireRole>
                 }
               />
