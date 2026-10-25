@@ -257,6 +257,9 @@ export interface LedgerView {
   receipts: Array<Record<string, unknown>>;
   allocations: Array<Record<string, unknown>>;
   creditApplications: Array<Record<string, unknown>>;
+  credits: Array<Record<string, unknown>>;
+  refunds: Array<Record<string, unknown>>;
+  redemptions: Array<Record<string, unknown>>;
   rewards: Array<Record<string, unknown>>;
   returns: Array<Record<string, unknown>>;
   corrections: Array<Record<string, unknown>>;

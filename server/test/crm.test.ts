@@ -503,4 +503,185 @@ describe('CRM operations', { concurrency: false }, () => {
       assert.equal(repeated.steps.length, report.steps.length);
       assert.deepEqual(crm.ledger(report.customerId), before);
     });
+  it('restores an applied credit when the later goods are returned', () => {
+    const report = crm.scenario('credit-settlement', admin);
+    const newer = crm
+      .bootstrap(admin)
+      .orders.find((order) => order.customer_id === report.customerId)!;
+    const line = crm.detail(newer.id).shipments[0]!.lines[0]!;
+    assert.equal(
+      run({
+        type: 'RECORD_RETURN',
+        payload: {
+          orderId: newer.id,
+          items: [{ shipmentLineId: line.id, qty: 1 }],
+          feePaise: 0,
+          reason: 'Second delivery returned',
+        },
+      }).status,
+      'APPLIED',
+    );
+    const value = crm.summary(report.customerId);
+    check(value);
+    assert.equal(value.creditsOpenPaise, 8000);
+    assert.equal(value.outstandingPaise, 0);
+    assert.equal(value.receivedPaise, 10000);
+    assert.equal(value.points.available, 0);
+    assert.ok(
+      crm
+        .ledger(report.customerId)
+        .creditApplications.some((row) => Number(row.amount_paise) < 0),
+    );
+  });
+
+  it('restores redeemed points when their settlement charge is returned', () => {
+    const report = crm.scenario('redemption', admin);
+    const newer = crm
+      .bootstrap(admin)
+      .orders.find((order) => order.customer_id === report.customerId)!;
+    const line = crm.detail(newer.id).shipments[0]!.lines[0]!;
+    assert.equal(
+      run({
+        type: 'RECORD_RETURN',
+        payload: {
+          orderId: newer.id,
+          items: [{ shipmentLineId: line.id, qty: 1 }],
+          feePaise: 0,
+          reason: 'Returned goods bought with points',
+        },
+      }).status,
+      'APPLIED',
+    );
+    const value = crm.summary(report.customerId);
+    check(value);
+    assert.equal(value.points.available, 1000);
+    assert.equal(value.points.redeemed, 0);
+    assert.equal(value.creditsOpenPaise, 0);
+    assert.equal(value.netBalancePaise, 0);
+    assert.ok(
+      crm
+        .ledger(report.customerId)
+        .redemptions.some((row) => Number(row.points) < 0),
+    );
+  });
+
+  it('keeps exact paise and rounds proportional awards down for partial returns', () => {
+    const customer = crm.createCustomer(admin, {
+      name: 'Paise account',
+      code: randomUUID(),
+    });
+    const orderId = run({
+      type: 'PUNCH_ORDER',
+      payload: {
+        customerId: customer.id,
+        items: [{ skuId: 'sku-a', qty: 2, unitPricePaise: 333 }],
+      },
+    }).references.orderId!;
+    run({ type: 'SUBMIT_ORDER', payload: { orderId } });
+    run({ type: 'APPROVE_ORDER', payload: { orderId, revision: 1 } });
+    const shipmentId = run({
+      type: 'START_LOADING',
+      payload: {
+        orderId,
+        items: [{ lineKey: crm.detail(orderId).lines[0]!.lineKey, qty: 2 }],
+      },
+    }).references.shipmentId!;
+    run({ type: 'DISPATCH_SHIPMENT', payload: { orderId, shipmentId } });
+    const line = crm.detail(orderId).shipments[0]!.lines[0]!;
+    run({
+      type: 'CONFIRM_DELIVERY',
+      payload: {
+        orderId,
+        shipmentId,
+        items: [{ shipmentLineId: line.id, qty: 2 }],
+      },
+    });
+    run({
+      type: 'RECEIVE_CUSTOMER_PAYMENT',
+      payload: {
+        customerId: customer.id,
+        amountPaise: 100,
+        reference: 'Partial receipt',
+      },
+    });
+    run({
+      type: 'RECORD_RETURN',
+      payload: {
+        orderId,
+        items: [{ shipmentLineId: line.id, qty: 1 }],
+        feePaise: 0,
+        reason: 'One unit returned',
+      },
+    });
+    const first = crm.summary(customer.id);
+    check(first);
+    assert.equal(first.outstandingPaise, 233);
+    assert.equal(first.points.available, 300);
+    assert.equal(first.points.locked, 700);
+    assert.equal(first.creditsOpenPaise, 0);
+    run({
+      type: 'RECORD_RETURN',
+      payload: {
+        orderId,
+        items: [{ shipmentLineId: line.id, qty: 1 }],
+        feePaise: 0,
+        reason: 'Remaining unit returned',
+      },
+    });
+    const second = crm.summary(customer.id);
+    check(second);
+    assert.equal(second.netBalancePaise, -100);
+    assert.equal(second.creditsOpenPaise, 100);
+    assert.equal(second.points.available, 0);
+    assert.equal(crm.detail(orderId).lines[0]?.delivered, 2);
+  });
+
+  it('voids pending loading documents after a correction and keeps original dispatch evidence', () => {
+    const report = crm.scenario('partial-delivery', admin);
+    const order = crm
+      .bootstrap(admin)
+      .orders.find((row) => row.customer_id === report.customerId)!;
+    const detail = crm.detail(order.id);
+    const old = JSON.stringify(detail.shipments[0]);
+    const loading = run({
+      type: 'START_LOADING',
+      payload: {
+        orderId: order.id,
+        items: [{ lineKey: detail.lines[0]!.lineKey, qty: 1 }],
+      },
+    }).references.shipmentId!;
+    const corrected = run({
+      type: 'CORRECT_DISPATCHED_ORDER',
+      payload: {
+        orderId: order.id,
+        items: [
+          { skuId: 'sku-c', qty: 1, unitPricePaise: 25000, deliveredQty: 0 },
+        ],
+        reason: 'Additional unit was dispatched',
+        evidence: 'Signed supplemental dispatch document',
+        authorizationReference: 'KAM approval 22',
+        location: 'EXISTING_SHIPMENT',
+        shipmentId: detail.shipments[0]!.id,
+      },
+    });
+    assert.equal(corrected.status, 'APPLIED');
+    const changed = crm.detail(order.id);
+    assert.equal(JSON.stringify(changed.shipments[0]), old);
+    assert.equal(
+      changed.shipments.find((row) => row.id === loading)?.status,
+      'VOIDED',
+    );
+    assert.equal(crm.summary(report.customerId).netBalancePaise, 250000);
+    assert.equal(
+      run({
+        type: 'START_LOADING',
+        payload: {
+          orderId: order.id,
+          items: [{ lineKey: detail.lines[0]!.lineKey, qty: 1 }],
+        },
+      }).status,
+      'APPLIED',
+    );
+    check(crm.summary(report.customerId));
+  });
 });

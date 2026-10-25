@@ -3,6 +3,7 @@ import {
   Injectable,
   ForbiddenException,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { sql } from 'drizzle-orm';
@@ -2071,6 +2072,11 @@ export class CrmService {
           unit_price_paise: item.unitPricePaise,
           points_per_unit: item.sku.points_per_unit,
         });
+    for (const loading of this.all<{ id: string }>(
+      sql`select id from shipments where order_id=${order.id} and status='LOADING'`,
+    )) {
+      this.change(c, 'shipments', loading.id, { status: 'VOIDED' });
+    }
     this.add(c, 'corrections', {
       id: correctionId,
       order_id: order.id,
@@ -2543,6 +2549,15 @@ export class CrmService {
       creditApplications: this.all(
         sql`select * from credit_applications where customer_id=${customerId} order by rowid`,
       ),
+      credits: this.all(
+        sql`select * from credit_notes where customer_id=${customerId} order by rowid`,
+      ),
+      refunds: this.all(
+        sql`select * from credit_refunds where customer_id=${customerId} order by rowid`,
+      ),
+      redemptions: this.all(
+        sql`select * from reward_redemptions where customer_id=${customerId} order by rowid`,
+      ),
       rewards: this.all(
         sql`select * from reward_ledger where customer_id=${customerId} order by rowid`,
       ),
@@ -2649,26 +2664,31 @@ export class CrmService {
   createCustomer(user: User, input: { name: string; code: string }): Customer {
     if (!['ADMIN', 'SALES', 'ACCOUNTS'].includes(user.role))
       throw new ForbiddenException('This role cannot create customers');
-    const c: Context = {
-      id: randomUUID(),
-      actor: user,
-      requester: user,
-      now: new Date().toISOString(),
-      customerId: randomUUID(),
-      effects: [],
-      references: {},
-    };
-    if (this.one(sql`select id from customers where code=${input.code}`))
-      fail('CODE_EXISTS', 'Customer code already exists');
-    this.add(c, 'customers', {
-      id: c.customerId,
-      name: input.name,
-      code: input.code,
-      version: 0,
-    });
-    return this.one<Customer>(
-      sql`select * from customers where id=${c.customerId}`,
-    )!;
+    return this.database.db.transaction(
+      () => {
+        const c: Context = {
+          id: randomUUID(),
+          actor: user,
+          requester: user,
+          now: new Date().toISOString(),
+          customerId: randomUUID(),
+          effects: [],
+          references: {},
+        };
+        if (this.one(sql`select id from customers where code=${input.code}`))
+          throw new ConflictException('Customer code already exists');
+        this.add(c, 'customers', {
+          id: c.customerId,
+          name: input.name,
+          code: input.code,
+          version: 0,
+        });
+        return this.one<Customer>(
+          sql`select * from customers where id=${c.customerId}`,
+        )!;
+      },
+      { behavior: 'immediate' },
+    );
   }
 
   startSample(id: string, user: User): ScenarioReport {
