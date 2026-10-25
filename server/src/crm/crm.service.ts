@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { sql } from 'drizzle-orm';
+import { SCENARIOS } from '@crm/shared/crm';
 import type { SQL } from 'drizzle-orm';
 import type { User, Role } from '@crm/shared';
 import type {
@@ -63,6 +64,7 @@ class Failure extends Error {
     super(message);
   }
 }
+class StopAfterStep extends Error {}
 class Decision extends Error {
   constructor(readonly decisions: ActionResult['decisions']) {
     super('Additional shipment information is required');
@@ -2669,37 +2671,105 @@ export class CrmService {
     )!;
   }
 
-  scenario(id: string, user: User): ScenarioReport {
+  startSample(id: string, user: User): ScenarioReport {
+    if (!SCENARIOS.some(([key]) => key === id))
+      throw new NotFoundException('Sample workflow not found');
     this.seed(user);
-    const customerId = randomUUID();
-    this.database.db.run(
-      sql`insert into customers(id,code,name,version) values (${customerId},${`CASE-${customerId.slice(0, 8)}`},${`Sample · ${id}`},0)`,
+    return this.database.db.transaction(() => {
+      const customerId = randomUUID(),
+        runId = randomUUID();
+      this.database.db.run(
+        sql`insert into customers(id,code,name,version) values (${customerId},${`CASE-${customerId.slice(0, 8)}`},${`Sample · ${id}`},0)`,
+      );
+      this.database.db.run(
+        sql`insert into sample_runs(id,scenario_id,customer_id,requester_id,created_at) values (${runId},${id},${customerId},${user.id},${new Date().toISOString()})`,
+      );
+      return {
+        id,
+        runId,
+        complete: false,
+        customerId,
+        steps: [],
+        summary: this.summary(customerId),
+      };
+    });
+  }
+
+  advanceSample(runId: string, user: User, all = false): ScenarioReport {
+    if (user.role !== 'ADMIN' || this.config.get('NODE_ENV') === 'production')
+      throw new ForbiddenException(
+        'Sample workflows are available to local administrators',
+      );
+    const sample = this.one<{ scenario_id: string; requester_id: string }>(
+      sql`select * from sample_runs where id=${runId}`,
     );
+    if (!sample) throw new NotFoundException('Sample workflow not found');
+    if (sample.requester_id !== user.id)
+      throw new ForbiddenException(
+        'This sample belongs to another staff member',
+      );
+    return this.scenario(sample.scenario_id, user, runId, all ? Infinity : 1);
+  }
+
+  scenario(
+    id: string,
+    user: User,
+    existingRunId?: string,
+    limit = Infinity,
+  ): ScenarioReport {
+    const started = existingRunId ? null : this.startSample(id, user);
+    const runId = existingRunId ?? started!.runId!;
+    const sample = this.one<{ customer_id: string; complete: number }>(
+      sql`select * from sample_runs where id=${runId}`,
+    )!;
+    const customerId = sample.customer_id;
     const actors = this.bootstrap(user).actors;
     const actor = (role: Role) =>
       actors.find((person) => person.role === role)?.id ?? user.id;
     const steps: ScenarioReport['steps'] = [];
+    let added = 0;
+    let complete = false;
     const run = (
       label: string,
       command: CrmCommand,
       role: Role = 'ADMIN',
-      key = randomUUID(),
+      key: string = randomUUID(),
+      fixedVersion?: number,
     ) => {
+      const position = steps.length;
+      const prior = this.one<{ result: string }>(
+        sql`select * from sample_steps where run_id=${runId} and position=${position}`,
+      );
+      if (prior) {
+        const result = JSON.parse(prior.result) as ActionResult;
+        steps.push({ label, result });
+        return result;
+      }
+      if (added >= limit) throw new StopAfterStep();
       const payload = command.payload;
       const version =
-        'orderId' in payload
+        fixedVersion ??
+        ('orderId' in payload
           ? this.detail(payload.orderId).order.version
-          : this.summary(payload.customerId).customer.version;
-      const result = this.execute(
-        {
-          command,
-          actorId: actor(role),
-          expectedVersion: version,
-          idempotencyKey: key,
+          : this.summary(payload.customerId).customer.version);
+      const envelope = {
+        command,
+        actorId: actor(role),
+        expectedVersion: version,
+        idempotencyKey: key,
+      };
+      const result = this.database.db.transaction(
+        () => {
+          const result = this.execute(envelope, user);
+          this.database.db.run(
+            sql`insert into sample_steps(id,run_id,position,label,envelope,result) values (${randomUUID()},${runId},${position},${label},${JSON.stringify(envelope)},${JSON.stringify(result)})`,
+          );
+          return result;
         },
-        user,
+        { behavior: 'immediate' },
       );
       steps.push({ label, result });
+      added++;
       return result;
     };
     const order = (qty = 1) => {
@@ -2796,220 +2866,227 @@ export class CrmService {
         },
         'WAREHOUSE',
       );
-    if (
-      ['partial-delivery', 'second-delivery', 'cancel-remainder'].includes(id)
-    ) {
-      const created = run(
-        'Create mixed order',
-        {
-          type: 'PUNCH_ORDER',
-          payload: {
-            customerId,
-            items: [
-              { skuId: 'sku-a', qty: 20, unitPricePaise: 10000 },
-              { skuId: 'sku-b', qty: 15, unitPricePaise: 15000 },
-            ],
-          },
-        },
-        'SALES',
-      );
-      const orderId = created.references.orderId!;
-      run(
-        'Submit order',
-        { type: 'SUBMIT_ORDER', payload: { orderId } },
-        'SALES',
-      );
-      run(
-        'Approve order',
-        { type: 'APPROVE_ORDER', payload: { orderId, revision: 1 } },
-        'KAM',
-      );
-      ship(orderId, [10, 10]);
-      if (id === 'second-delivery') ship(orderId);
-      if (id === 'cancel-remainder')
-        run(
-          'Cancel unshipped units',
+    try {
+      if (
+        ['partial-delivery', 'second-delivery', 'cancel-remainder'].includes(id)
+      ) {
+        const created = run(
+          'Create mixed order',
           {
-            type: 'CANCEL_REMAINDER',
+            type: 'PUNCH_ORDER',
             payload: {
-              orderId,
-              reason: 'Customer canceled the remaining units',
+              customerId,
+              items: [
+                { skuId: 'sku-a', qty: 20, unitPricePaise: 10000 },
+                { skuId: 'sku-b', qty: 15, unitPricePaise: 15000 },
+              ],
             },
           },
           'SALES',
         );
-    } else if (id === 'reapproval') {
-      const orderId = order();
-      const loaded = run(
-        'Start loading',
-        {
-          type: 'START_LOADING',
-          payload: {
-            orderId,
-            items: [
-              { lineKey: this.detail(orderId).lines[0]!.lineKey, qty: 1 },
-            ],
-          },
-        },
-        'WAREHOUSE',
-      );
-      run(
-        'Revise approved order',
-        {
-          type: 'EDIT_ORDER',
-          payload: {
-            orderId,
-            items: [{ skuId: 'sku-a', qty: 2, unitPricePaise: 11000 }],
-            reason: 'Revised commercial terms',
-          },
-        },
-        'SALES',
-      );
-      run(
-        'Attempt dispatch of earlier loading document',
-        {
-          type: 'DISPATCH_SHIPMENT',
-          payload: { orderId, shipmentId: loaded.references.shipmentId! },
-        },
-        'WAREHOUSE',
-      );
-      run(
-        'Approve revised terms',
-        { type: 'APPROVE_ORDER', payload: { orderId, revision: 2 } },
-        'KAM',
-      );
-    } else if (id === 'dispatch-edit') {
-      const orderId = order();
-      ship(orderId);
-      run(
-        'Attempt ordinary edit after dispatch',
-        {
-          type: 'EDIT_ORDER',
-          payload: {
-            orderId,
-            items: [{ skuId: 'sku-a', qty: 2, unitPricePaise: 10000 }],
-            reason: 'Additional unit requested',
-          },
-        },
-        'SALES',
-      );
-    } else if (id === 'cancel-order') {
-      const orderId = order();
-      run(
-        'Cancel open order',
-        {
-          type: 'CANCEL_REMAINDER',
-          payload: { orderId, reason: 'Customer cancellation' },
-        },
-        'SALES',
-      );
-    } else if (id === 'customer-payment') {
-      ship(order());
-      ship(order());
-      payment(15000);
-    } else if (
-      [
-        'paid-return',
-        'redemption',
-        'spent-return',
-        'credit-settlement',
-      ].includes(id)
-    ) {
-      const first = order();
-      ship(first);
-      payment(10000);
-      if (id === 'paid-return') returned(first, 2000);
-      if (id === 'redemption' || id === 'spent-return') {
-        const second = order();
-        ship(second);
-        const charge = this.summary(customerId).charges.find(
-          (row) => row.order_id === second,
-        )!;
+        const orderId = created.references.orderId!;
         run(
-          'Redeem customer points',
-          {
-            type: 'REDEEM_POINTS',
-            payload: { customerId, chargeId: charge.id, points: 1000 },
-          },
-          'ACCOUNTS',
+          'Submit order',
+          { type: 'SUBMIT_ORDER', payload: { orderId } },
+          'SALES',
         );
-        if (id === 'spent-return') returned(first);
-      }
-      if (id === 'credit-settlement') {
-        const credit = returned(first, 2000).references.creditNoteId!;
-        const second = order();
-        ship(second);
-        const charge = this.summary(customerId).charges.find(
-          (row) => row.order_id === second,
-        )!;
         run(
-          'Apply open credit',
+          'Approve order',
+          { type: 'APPROVE_ORDER', payload: { orderId, revision: 1 } },
+          'KAM',
+        );
+        ship(orderId, [10, 10]);
+        if (id === 'second-delivery') ship(orderId);
+        if (id === 'cancel-remainder')
+          run(
+            'Cancel unshipped units',
+            {
+              type: 'CANCEL_REMAINDER',
+              payload: {
+                orderId,
+                reason: 'Customer canceled the remaining units',
+              },
+            },
+            'SALES',
+          );
+      } else if (id === 'reapproval') {
+        const orderId = order();
+        const loaded = run(
+          'Start loading',
           {
-            type: 'APPLY_CREDIT_NOTE',
+            type: 'START_LOADING',
             payload: {
-              customerId,
-              creditNoteId: credit,
-              chargeId: charge.id,
-              amountPaise: 8000,
+              orderId,
+              items: [
+                { lineKey: this.detail(orderId).lines[0]!.lineKey, qty: 1 },
+              ],
             },
           },
-          'ACCOUNTS',
+          'WAREHOUSE',
         );
-      }
-    } else if (id === 'shipment-correction') {
-      const orderId = order();
-      const shipmentId = ship(orderId);
-      const payload: Payload<'CORRECT_DISPATCHED_ORDER'> = {
-        orderId,
-        items: [
-          { skuId: 'sku-c', qty: 1, unitPricePaise: 25000, deliveredQty: 1 },
-        ],
-        reason: 'Unrecorded customer request',
-        evidence: 'Signed delivery confirmation',
-        authorizationReference: 'Commercial authorization',
-      };
-      run(
-        'Request correction',
-        { type: 'CORRECT_DISPATCHED_ORDER', payload },
-        'KAM',
-      );
-      run(
-        'Confirm original dispatch',
-        {
-          type: 'CORRECT_DISPATCHED_ORDER',
-          payload: { ...payload, location: 'EXISTING_SHIPMENT', shipmentId },
-        },
-        'KAM',
-      );
-    } else if (id === 'receipt-retry') {
-      const key = randomUUID();
-      const envelope: ActionEnvelope = {
-        command: {
+        run(
+          'Revise approved order',
+          {
+            type: 'EDIT_ORDER',
+            payload: {
+              orderId,
+              items: [{ skuId: 'sku-a', qty: 2, unitPricePaise: 11000 }],
+              reason: 'Revised commercial terms',
+            },
+          },
+          'SALES',
+        );
+        run(
+          'Attempt dispatch of earlier loading document',
+          {
+            type: 'DISPATCH_SHIPMENT',
+            payload: { orderId, shipmentId: loaded.references.shipmentId! },
+          },
+          'WAREHOUSE',
+        );
+        run(
+          'Approve revised terms',
+          { type: 'APPROVE_ORDER', payload: { orderId, revision: 2 } },
+          'KAM',
+        );
+      } else if (id === 'dispatch-edit') {
+        const orderId = order();
+        ship(orderId);
+        run(
+          'Attempt ordinary edit after dispatch',
+          {
+            type: 'EDIT_ORDER',
+            payload: {
+              orderId,
+              items: [{ skuId: 'sku-a', qty: 2, unitPricePaise: 10000 }],
+              reason: 'Additional unit requested',
+            },
+          },
+          'SALES',
+        );
+      } else if (id === 'cancel-order') {
+        const orderId = order();
+        run(
+          'Cancel open order',
+          {
+            type: 'CANCEL_REMAINDER',
+            payload: { orderId, reason: 'Customer cancellation' },
+          },
+          'SALES',
+        );
+      } else if (id === 'customer-payment') {
+        ship(order());
+        ship(order());
+        payment(15000);
+      } else if (
+        [
+          'paid-return',
+          'redemption',
+          'spent-return',
+          'credit-settlement',
+        ].includes(id)
+      ) {
+        const first = order();
+        ship(first);
+        payment(10000);
+        if (id === 'paid-return') returned(first, 2000);
+        if (id === 'redemption' || id === 'spent-return') {
+          const second = order();
+          ship(second);
+          const charge = this.summary(customerId).charges.find(
+            (row) => row.order_id === second,
+          )!;
+          run(
+            'Redeem customer points',
+            {
+              type: 'REDEEM_POINTS',
+              payload: { customerId, chargeId: charge.id, points: 1000 },
+            },
+            'ACCOUNTS',
+          );
+          if (id === 'spent-return') returned(first);
+        }
+        if (id === 'credit-settlement') {
+          const credit = returned(first, 2000).references.creditNoteId!;
+          const second = order();
+          ship(second);
+          const charge = this.summary(customerId).charges.find(
+            (row) => row.order_id === second,
+          )!;
+          run(
+            'Apply open credit',
+            {
+              type: 'APPLY_CREDIT_NOTE',
+              payload: {
+                customerId,
+                creditNoteId: credit,
+                chargeId: charge.id,
+                amountPaise: 8000,
+              },
+            },
+            'ACCOUNTS',
+          );
+        }
+      } else if (id === 'shipment-correction') {
+        const orderId = order();
+        const shipmentId = ship(orderId);
+        const payload: Payload<'CORRECT_DISPATCHED_ORDER'> = {
+          orderId,
+          items: [
+            { skuId: 'sku-c', qty: 1, unitPricePaise: 25000, deliveredQty: 1 },
+          ],
+          reason: 'Unrecorded customer request',
+          evidence: 'Signed delivery confirmation',
+          authorizationReference: 'Commercial authorization',
+        };
+        run(
+          'Request correction',
+          { type: 'CORRECT_DISPATCHED_ORDER', payload },
+          'KAM',
+        );
+        run(
+          'Confirm original dispatch',
+          {
+            type: 'CORRECT_DISPATCHED_ORDER',
+            payload: { ...payload, location: 'EXISTING_SHIPMENT', shipmentId },
+          },
+          'KAM',
+        );
+      } else if (id === 'receipt-retry') {
+        const command: CrmCommand = {
           type: 'RECEIVE_CUSTOMER_PAYMENT',
           payload: {
             customerId,
             amountPaise: 10000,
             reference: 'Transfer reference',
           },
-        },
-        actorId: actor('ACCOUNTS'),
-        expectedVersion: this.summary(customerId).customer.version,
-        idempotencyKey: key,
-      };
-      steps.push(
-        { label: 'Receive payment', result: this.execute(envelope, user) },
-        {
-          label: 'Retry the same request',
-          result: this.execute(envelope, user),
-        },
-      );
-    } else if (id === 'competing-returns') {
-      const orderId = order();
-      ship(orderId);
-      const detail = this.detail(orderId);
-      const line = detail.shipments[0]!.lines[0]!;
-      const envelope: ActionEnvelope = {
-        command: {
+        };
+        run(
+          'Receive payment',
+          command,
+          'ACCOUNTS',
+          `sample:${runId}:receipt`,
+          0,
+        );
+        run(
+          'Retry the same request',
+          command,
+          'ACCOUNTS',
+          `sample:${runId}:receipt`,
+          0,
+        );
+      } else if (id === 'competing-returns') {
+        const orderId = order();
+        ship(orderId);
+        const detail = this.detail(orderId),
+          line = detail.shipments[0]!.lines[0]!;
+        const prior = this.one<{ envelope: string }>(
+          sql`select envelope from sample_steps where run_id=${runId} and position=${steps.length}`,
+        );
+        const version = prior
+          ? (JSON.parse(prior.envelope) as ActionEnvelope).expectedVersion
+          : detail.order.version;
+        const command: CrmCommand = {
           type: 'RECORD_RETURN',
           payload: {
             orderId,
@@ -3017,22 +3094,36 @@ export class CrmService {
             feePaise: 0,
             reason: 'Return requested',
           },
-        },
-        actorId: actor('WAREHOUSE'),
-        expectedVersion: detail.order.version,
-        idempotencyKey: randomUUID(),
-      };
-      steps.push(
-        { label: 'First return request', result: this.execute(envelope, user) },
-        {
-          label: 'Second request using the earlier version',
-          result: this.execute(
-            { ...envelope, idempotencyKey: randomUUID() },
-            user,
-          ),
-        },
-      );
-    } else throw new NotFoundException('Sample workflow not found');
-    return { id, customerId, steps, summary: this.summary(customerId) };
+        };
+        run(
+          'First return request',
+          command,
+          'WAREHOUSE',
+          `sample:${runId}:return-1`,
+          version,
+        );
+        run(
+          'Second request using the earlier version',
+          command,
+          'WAREHOUSE',
+          `sample:${runId}:return-2`,
+          version,
+        );
+      } else throw new NotFoundException('Sample workflow not found');
+      complete = true;
+    } catch (error) {
+      if (!(error instanceof StopAfterStep)) throw error;
+    }
+    this.database.db.run(
+      sql`update sample_runs set complete=${complete ? 1 : 0} where id=${runId}`,
+    );
+    return {
+      id,
+      runId,
+      complete,
+      customerId,
+      steps,
+      summary: this.summary(customerId),
+    };
   }
 }

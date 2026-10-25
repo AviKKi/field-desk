@@ -12,7 +12,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsc -p tsconfig.build.json && node --env-file-if-exists=.env dist/database/migrate.js",
     "db:studio": "drizzle-kit studio",
-    "admin:create": "tsc -p tsconfig.build.json && node --env-file-if-exists=.env dist/scripts/create-admin.js"
+    "admin:create": "tsc -p tsconfig.build.json && node --env-file-if-exists=.env dist/scripts/create-admin.js",
+    "db:seed": "tsc -p tsconfig.build.json && node --env-file-if-exists=.env dist/scripts/seed.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.8",

@@ -15,6 +15,13 @@
       "when": 1792941732718,
       "tag": "0001_last_the_call",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792942804871,
+      "tag": "0002_jazzy_bushwacker",
+      "breakpoints": true
     }
   ]
 }

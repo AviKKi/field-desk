@@ -17,10 +17,30 @@ const resetSchema = z
   .object({ confirmation: z.literal('RESET CRM DATA') })
   .strict();
 const scenarioSchema = z.enum(SCENARIOS.map(([id]) => id));
+const sampleSchema = z.object({ scenarioId: scenarioSchema }).strict();
 
 @Controller('crm')
 export class CrmController {
   constructor(private readonly crm: CrmService) {}
+  @Roles('ADMIN')
+  @Post('samples')
+  startSample(
+    @Body(new ZodValidationPipe(sampleSchema))
+    input: z.infer<typeof sampleSchema>,
+    @CurrentUser() user: User,
+  ) {
+    return this.crm.startSample(input.scenarioId, user);
+  }
+  @Roles('ADMIN')
+  @Post('samples/:id/step')
+  stepSample(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.crm.advanceSample(id, user);
+  }
+  @Roles('ADMIN')
+  @Post('samples/:id/run')
+  finishSample(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.crm.advanceSample(id, user, true);
+  }
   @Get('bootstrap')
   bootstrap(@CurrentUser() user: User) {
     return this.crm.bootstrap(user);

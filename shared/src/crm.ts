@@ -285,6 +285,8 @@ export const SCENARIOS = [
 ] as const;
 export interface ScenarioReport {
   id: string;
+  runId?: string;
+  complete?: boolean;
   customerId: string;
   steps: Array<{ label: string; result: ActionResult }>;
   summary: CustomerSummary;

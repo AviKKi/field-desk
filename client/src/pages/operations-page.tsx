@@ -437,7 +437,9 @@ export function OperationsPage() {
       setError(errorMessage(failure));
     }
   }
-  async function utility(kind: 'seed' | 'reset' | 'scenario') {
+  async function utility(
+    kind: 'seed' | 'reset' | 'scenario' | 'start' | 'step',
+  ) {
     if (
       kind === 'reset' &&
       !window.confirm(
@@ -448,11 +450,32 @@ export function OperationsPage() {
     setPending(true);
     setError('');
     try {
-      if (kind === 'scenario') {
-        const value = await api<ScenarioReport>(
-          `/crm/scenarios/${scenario}/run`,
-          { method: 'POST' },
-        );
+      if (kind === 'scenario' || kind === 'start' || kind === 'step') {
+        let value: ScenarioReport;
+        if (kind === 'start')
+          value = await api<ScenarioReport>('/crm/samples', {
+            method: 'POST',
+            body: JSON.stringify({ scenarioId: scenario }),
+          });
+        else if (kind === 'step' && report?.runId && report.id === scenario)
+          value = await api<ScenarioReport>(
+            `/crm/samples/${report.runId}/step`,
+            { method: 'POST' },
+          );
+        else if (
+          kind === 'scenario' &&
+          report?.runId &&
+          report.id === scenario &&
+          !report.complete
+        )
+          value = await api<ScenarioReport>(
+            `/crm/samples/${report.runId}/run`,
+            { method: 'POST' },
+          );
+        else
+          value = await api<ScenarioReport>(`/crm/scenarios/${scenario}/run`, {
+            method: 'POST',
+          });
         setReport(value);
         selection.selectCustomer(value.customerId);
         setResult(value.steps.at(-1)?.result ?? null);
@@ -620,7 +643,10 @@ export function OperationsPage() {
           <NativeSelect
             aria-label="Sample workflow"
             value={scenario}
-            onChange={(event) => setScenario(event.target.value)}
+            onChange={(event) => {
+              setScenario(event.target.value);
+              setReport(null);
+            }}
             disabled={pending}
           >
             {SCENARIOS.map(([id, label]) => (
@@ -629,6 +655,27 @@ export function OperationsPage() {
               </option>
             ))}
           </NativeSelect>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void utility('start')}
+            disabled={pending}
+          >
+            Start workflow
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void utility('step')}
+            disabled={
+              pending ||
+              !report?.runId ||
+              report.complete ||
+              report.id !== scenario
+            }
+          >
+            Next step <ChevronRight />
+          </Button>
           <Button
             size="sm"
             onClick={() => void utility('scenario')}

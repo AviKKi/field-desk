@@ -46,14 +46,12 @@ describe('CRM operations', { concurrency: false }, () => {
     database = app.get(DatabaseService);
     migrate(database.db, { migrationsFolder: resolve('drizzle') });
     crm = app.get(CrmService);
-    admin = await app
-      .get(UsersService)
-      .create({
-        name: 'Operations Admin',
-        email: 'ops@example.test',
-        password: 'operations-test-password',
-        role: 'ADMIN',
-      });
+    admin = await app.get(UsersService).create({
+      name: 'Operations Admin',
+      email: 'ops@example.test',
+      password: 'operations-test-password',
+      role: 'ADMIN',
+    });
     await app.init();
     crm.seed(admin);
   });
@@ -489,4 +487,20 @@ describe('CRM operations', { concurrency: false }, () => {
     assert.deepEqual(dangling, []);
     check(crm.summary(customerId));
   });
+  for (const [id, label] of SCENARIOS)
+    it(`steps through ${label}`, () => {
+      let report = crm.startSample(id, admin);
+      assert.equal(report.steps.length, 0);
+      for (let count = 0; count < 30 && !report.complete; count++) {
+        const previous = report.steps.length;
+        report = crm.advanceSample(report.runId!, admin);
+        assert.ok(report.steps.length <= previous + 1);
+        check(report.summary);
+      }
+      assert.equal(report.complete, true);
+      const before = crm.ledger(report.customerId);
+      const repeated = crm.advanceSample(report.runId!, admin, true);
+      assert.equal(repeated.steps.length, report.steps.length);
+      assert.deepEqual(crm.ledger(report.customerId), before);
+    });
 });
