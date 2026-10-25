@@ -16,12 +16,12 @@ import { AuthService } from './auth.service.js';
         signOptions: {
           algorithm: 'HS256',
           issuer: 'crm-workspace',
-          audience: 'crm-workspace-client',
+          audience: 'crm-client',
         },
         verifyOptions: {
           algorithms: ['HS256'],
           issuer: 'crm-workspace',
-          audience: 'crm-workspace-client',
+          audience: 'crm-client',
         },
       }),
     }),

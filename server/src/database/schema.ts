@@ -20,7 +20,7 @@ export const users = sqliteTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => [
-    check('users_role_check', sql`${table.role} in ('SALES', 'KAM', 'ADMIN')`),
+    check('users_role_check', sql`${table.role} in ('SALES', 'KAM', 'WAREHOUSE', 'ACCOUNTS', 'ADMIN')`),
     check('users_active_check', sql`${table.active} in (0, 1)`),
   ],
 );
@@ -48,3 +48,5 @@ export const publicUserColumns = {
   active: users.active,
   createdAt: users.createdAt,
 };
+
+export * from './crm-schema.js';

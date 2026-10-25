@@ -8,9 +8,9 @@ export function Brand({ light = false }: { light?: boolean }) {
         <Workflow className="size-5" />
       </span>
       <span className="text-lg font-semibold tracking-tight">
-        rule
+        field
         <span className={light ? 'text-emerald-200' : 'text-primary'}>
-          engine
+          desk
         </span>
         <span className="ml-1.5 align-top text-[9px] font-medium uppercase tracking-widest opacity-50">
           Workspace

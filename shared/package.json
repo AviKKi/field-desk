@@ -18,6 +18,11 @@
       "types": "./dist/schemas.d.ts",
       "import": "./dist/schemas.js",
       "default": "./dist/schemas.js"
+    },
+    "./crm": {
+      "types": "./dist/crm.d.ts",
+      "import": "./dist/crm.js",
+      "default": "./dist/crm.js"
     }
   },
   "files": [
