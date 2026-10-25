@@ -11,6 +11,7 @@ import { DatabaseModule } from './database/database.module.js';
 import { DatabaseService } from './database/database.service.js';
 import { UsersModule } from './users/users.module.js';
 import { WorkspaceModule } from './workspace/workspace.module.js';
+import { CrmModule } from './crm/crm.module.js';
 
 @Controller('health')
 class HealthController {
@@ -31,6 +32,7 @@ class HealthController {
     UsersModule,
     AuthModule,
     WorkspaceModule,
+    CrmModule,
   ],
   controllers: [HealthController],
   providers: [
