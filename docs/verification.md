@@ -25,7 +25,7 @@ The HTTP workflow suite defines its own requests and expected outcomes. It uses 
 
 Additional HTTP cases race credit applications and point redemptions. Two hundred deterministic sequences vary item quantities, prices, payment timing, partial confirmations, return timing and fees, selected cancellation, point settlement, refund/reversal, duplicate receipt submissions, and invalid excess quantities. Each sequence tracks expected quantities and the customer net position independently, checks point conservation, and verifies that previously recorded ledger entries remain unchanged.
 
-The service integration suite uses test-only fixtures to check role boundaries and forged actors, exact paise and rounding, return reversals of credit/point settlement, partial settlement corrections, stale loading documents, and preserved dispatched evidence. It also verifies that the removed development runner, seed, and reset endpoints return 404 even for an authenticated administrator. An altered-record test proves account checks detect inconsistent evidence and roll back the next activity.
+The service integration suite uses test-only fixtures to check role boundaries and forged actors, exact paise and rounding, return reversals of credit/point settlement, partial settlement corrections, stale loading documents, and preserved dispatched evidence. HTTP assertions compare domain customer, catalog, shipment, return, credit, and reward reads with the composed customer and order views. It also verifies that the removed development runner, seed, and reset endpoints return 404 even for an authenticated administrator. An altered-record test proves account checks detect inconsistent evidence and roll back the next activity.
 
 `server/test/migrations.test.ts` migrates a populated database from the preceding schema. It verifies that existing credits, applications, refunds, and receipt funding survive the upgrade, that new reversal links are valid, and that reapplying migrations is safe. It also starts with legacy workflow metadata and verifies that its tables are removed while customer transactions remain intact. Authentication tests cover strict validation, session expiry/revocation, default-deny access, CSRF, credential throttling, and password handling.
 
@@ -41,17 +41,16 @@ Latencies measure `POST /crm/actions`, including HTTP, validation, database work
 
 Reports are generated locally and ignored by Git. Preserve their files together with command output if retaining a verification record. Rerun reports after source changes; commit IDs and hashes identify which code was measured.
 
-## Checkpoint
+## Historical checkpoints
 
-Commit `7f5c5d2` preserves the verified application checkpoint. The operating conventions at this checkpoint are version `2026-10-26.1`. Subsequent corrections should use new commits; retain this reference for reproducing earlier behavior.
+These references identify recorded implementation snapshots, rather than the current checkout:
 
-The intended version label is `crm-v0.1.0`. Tag creation was unavailable in the restricted workspace. To attach the label locally:
+| Commit    | Snapshot                                                                                                                                                                                                                                            |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `7f5c5d2` | Earlier business-terms and operational acceptance checkpoint, before the CRM navigation, CLI dataset, removal of runtime workflow tooling, and domain-module refactors.                                                                             |
+| `c3c4abe` | Domain models, typed Drizzle repositories, services, and controllers; 251 tests passed, along with lint, type checking, production build, formatting, and repeat-safe local seed verification. Drizzle reported no schema change for this refactor. |
 
-```sh
-git tag -a crm-v0.1.0 7f5c5d2 -m 'Verified CRM operations checkpoint'
-```
-
-The reference commit contains the complete application changes, independent tests, source metrics command, and operating documentation. Later documentation corrections do not change that implementation.
+Both snapshots use operating conventions version `2026-10-26.1`. Use commit IDs to reproduce a snapshot; no release tag is assumed. For the current checkout, rerun the commands above and retain their output with freshly generated reports.
 
 ## Limits
 
@@ -66,3 +65,4 @@ The API's live checks inspect current persisted evidence. They support transacti
 - [API reference](api.md)
 - [Operations desk](operations.md)
 - [Business terms](business-terms.md)
+- [Architecture](architecture.md)

@@ -4,7 +4,7 @@
 - [Architecture, authentication, and deployment](architecture.md)
 - [API and role access](api.md)
 - [Business terms and settlement conventions](business-terms.md)
-- [Verification and checkpoints](verification.md)
+- [Verification coverage, reports, and historical checkpoints](verification.md)
 - [Local setup and verification](../CONTRIBUTING.md)
 
 ## Related

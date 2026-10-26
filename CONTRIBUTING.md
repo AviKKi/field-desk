@@ -1,6 +1,6 @@
 # Development
 
-Use Node.js 22.14+ or 24 and pnpm 10.18.3.
+Use Node.js 22.14 or newer within the 22.x line, or Node.js 24, and pnpm 10.18.3. The workspace engine range is `>=22.14.0 <25`. Run these commands from a local checkout's root:
 
 ```sh
 pnpm install
@@ -14,6 +14,8 @@ pnpm dev
 `env:setup` creates `server/.env` with a random JWT secret and preserves an existing file. `admin:create` prompts for the name, email, and password, with password input hidden. It refuses to promote or overwrite an existing account. There are no default credentials.
 
 Open <http://localhost:5173>. The API runs at <http://localhost:3000/api>; Vite proxies `/api` to the backend. Keep `CLIENT_ORIGIN` consistent with the URL you use in your browser. The default is `http://localhost:5173`.
+
+Seeding is optional; omit `pnpm db:seed` for an empty CRM. The development client requires port 5173 to be free. If you change the API's `PORT`, also change the proxy target in `client/vite.config.ts`.
 
 For unattended admin creation, supply `ADMIN_NAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` through your environment. Avoid putting passwords in shell history. These variables are only read by the admin command.
 

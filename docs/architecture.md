@@ -1,6 +1,6 @@
 # Architecture
 
-The repository uses sibling pnpm packages for the React client, NestJS API, and shared contracts. CRM navigation uses separate list, detail, and form routes. Zustand holds the acting staff selection in memory; fetched records are held by the route data hooks.
+The repository uses sibling pnpm packages for the React client, NestJS API, and shared contracts. CRM navigation uses separate list, detail, and form routes. Zustand holds the current public user and acting staff selection in memory. The CRM context holds bootstrap data; route data hooks hold fetched detail records.
 
 ## Backend modules
 
@@ -62,7 +62,7 @@ Every protected request verifies the JWT, checks its live database session, and 
 
 The default session lifetime is eight hours. There is no refresh-token flow; expiry requires another sign-in. Expired session rows are pruned when a session is created. Email verification, password recovery, MFA, and external payment rails are outside this application’s scope.
 
-Global Nest guards apply rate limiting, authentication, and then authorization. Only explicitly public routes bypass authentication. Public registration accepts no role field and always assigns Sales. The API validates all request bodies and queries with strict shared Zod schemas. User responses explicitly select public columns.
+Global Nest guards apply rate limiting, authentication, and then authorization. Only explicitly public routes bypass authentication. Public registration accepts no role field and always assigns Sales. Shared Zod schemas validate authentication, staff management, user-list queries, and CRM action envelopes and payloads. Customer creation uses a Zod schema in its domain controller. User responses explicitly select public columns. All active roles can read CRM records; services enforce mutation permissions, and action traces are limited to the requester, acting staff member, or Admin.
 
 Browser writes must have the configured Origin, and cross-site Fetch Metadata is rejected. Non-browser clients may omit Origin. JSON content types are required for body-bearing writes. SameSite cookies and origin checks work together against CSRF, including login CSRF. Helmet supplies security headers; API responses disable caching. Credential endpoints have stricter IP-based limits. Rate limits are process-local, suitable for a single-instance starter.
 
@@ -81,7 +81,7 @@ SQLite uses `better-sqlite3` through Drizzle, with WAL, foreign keys, a busy tim
 | `JWT_SECRET`          | Required                  | Random secret of at least 32 characters                      |
 | `SESSION_TTL_SECONDS` | `28800`                   | Session duration, 60–86400 seconds                           |
 
-Build with `pnpm build`; run the API with `pnpm --filter @crm/server start`. Serve `client/dist` as static assets with SPA fallback to `index.html`, and proxy `/api` to NestJS under the same public origin. Vite’s proxy applies only in development. Apply migrations separately before starting a release. Keep `server/drizzle` alongside the server build for the migration command.
+Build with `pnpm build`; run the API with `pnpm --filter @crm/server start`. Serve `client/dist` as static assets with SPA fallback to `index.html`, and proxy `/api` to NestJS under the same public origin. Vite’s proxy applies only in development. Apply migrations separately before starting a release. Preserve the `server/dist` and `server/drizzle` directories relative to `server/` for the migration command. Filtered pnpm server commands run in `server/`, where `.env` and relative database paths are resolved; use that same working directory if launching Node directly.
 
 Production requires `NODE_ENV=production`, an HTTPS `CLIENT_ORIGIN`, TLS at the reverse proxy, a durable volume for SQLite, and a secret supplied by your environment. Keep frontend and API on the same public origin for this cookie configuration. Back up SQLite with an online backup or a consistent snapshot that includes WAL state. Changing `JWT_SECRET` signs out existing sessions.
 
@@ -96,3 +96,4 @@ Implementation references: [NestJS authentication](https://docs.nestjs.com/secur
 - [Development workflow](../CONTRIBUTING.md)
 - [API reference](api.md)
 - [Operations desk](operations.md)
+- [Verification](verification.md)
