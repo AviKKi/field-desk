@@ -1,7 +1,9 @@
-import { sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+import { crmSeedHistory } from './seed.model.js';
+import { crmCustomers } from '../customers/customers.model.js';
 import { seedReferenceData } from './seed-reference-data.js';
 import type { User, Role } from '@crm/shared';
-import type { CrmCommand, Customer } from '@crm/shared/crm';
+import type { CrmCommand } from '@crm/shared/crm';
 import type { DatabaseService } from '../database/database.service.js';
 import type { CrmService } from '../crm/crm.service.js';
 
@@ -19,9 +21,11 @@ export function seedDevelopmentData(
   return database.db.transaction(
     () => {
       seedReferenceData(database, admin);
-      const previous = database.db.get<{ summary: string }>(
-        sql`select summary from seed_history where id=${datasetId}`,
-      );
+      const previous = database.db
+        .select()
+        .from(crmSeedHistory)
+        .where(eq(crmSeedHistory.id, datasetId))
+        .get();
       if (previous)
         return {
           ...(JSON.parse(previous.summary) as SeedSummary),
@@ -60,9 +64,11 @@ export function seedDevelopmentData(
         return result;
       }
       function customer(code: string, name: string) {
-        const existing = database.db.get<Customer>(
-          sql`select * from customers where code=${code}`,
-        );
+        const existing = database.db
+          .select()
+          .from(crmCustomers)
+          .where(eq(crmCustomers.code, code))
+          .get();
         const record = existing ?? crm.createCustomer(admin, { code, name });
         summary.customers.push({ id: record.id, code: record.code });
         return record.id;
@@ -493,9 +499,14 @@ export function seedDevelopmentData(
             `Seeded account ${customer.code} is inconsistent: ${failed.map((check) => check.label).join(', ')}`,
           );
       }
-      database.db.run(
-        sql`insert into seed_history(id,summary,created_at) values (${datasetId},${JSON.stringify(summary)},${new Date().toISOString()})`,
-      );
+      database.db
+        .insert(crmSeedHistory)
+        .values({
+          id: datasetId,
+          summary: JSON.stringify(summary),
+          created_at: new Date().toISOString(),
+        })
+        .run();
       return { ...summary, alreadyPresent: false };
     },
     { behavior: 'immediate' },

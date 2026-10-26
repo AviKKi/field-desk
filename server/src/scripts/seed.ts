@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { sql } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
+import { users } from '../users/users.model.js';
 import { AppModule } from '../app.module.js';
 import { DatabaseService } from '../database/database.service.js';
 import { UsersService } from '../users/users.service.js';
@@ -13,9 +14,12 @@ const app = await NestFactory.createApplicationContext(AppModule, {
 try {
   const account = app
     .get(DatabaseService)
-    .db.get<{ id: string }>(
-      sql`select id from users where active=1 and role='ADMIN' order by created_at limit 1`,
-    );
+    .db.select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.active, true), eq(users.role, 'ADMIN')))
+    .orderBy(asc(users.createdAt))
+    .limit(1)
+    .get();
   if (!account)
     throw new Error('Create an admin with pnpm admin:create first.');
   const user = app.get(UsersService).findById(account.id)!;
