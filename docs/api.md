@@ -87,8 +87,8 @@ Action responses contain `status`, `actionId`, `errors`, `decisions`, `effects`,
 
 ## Related
 
-- [Business terms](candidate-walkthrough/business_terms.md)
-- [Canonical business rules](candidate-walkthrough/canonical_business_rules.md)
+- [Business terms](business-guide/business_terms.md)
+- [Canonical business rules](business-guide/canonical_business_rules.md)
 - [Documentation index](README.md)
 - [Operations desk](operations.md)
 - [Business reference](business-terms.md)

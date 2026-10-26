@@ -1,6 +1,6 @@
 # Documentation
 
-- [Candidate walkthrough: terms and canonical rules](candidate-walkthrough/README.md)
+- [Business guide: terms and canonical rules](business-guide/README.md)
 - [CRM navigation, customer records, and order forms](operations.md)
 - [Architecture, authentication, and deployment](architecture.md)
 - [API and role access](api.md)
