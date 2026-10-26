@@ -324,6 +324,12 @@ export class CrmService {
               case 'REFUND_CREDIT_NOTE':
                 this.refundCredit(c, envelope.command.payload);
                 break;
+              case 'REVERSE_CREDIT_APPLICATION':
+                this.reverseCreditApplication(c, envelope.command.payload);
+                break;
+              case 'REVERSE_CREDIT_REFUND':
+                this.reverseCreditRefund(c, envelope.command.payload);
+                break;
               case 'CORRECT_DISPATCHED_ORDER':
                 this.correct(c, envelope.command.payload);
                 break;
@@ -871,19 +877,34 @@ export class CrmService {
   private cancel(c: Context, p: Payload<'CANCEL_REMAINDER'>) {
     this.authorize(c, 'SALES', 'ADMIN');
     const order = this.order(c, p.orderId);
+    const lines = this.lines(order);
+    if (p.items) {
+      distinct(p.items.map((item) => item.lineKey));
+      for (const item of p.items)
+        if (!lines.some((line) => line.line_key === item.lineKey))
+          fail('LINE_NOT_FOUND', 'Select a current line from this order');
+    }
     let canceledTotal = 0;
     for (const shipment of this.all<{ id: string }>(
       sql`select id from shipments where order_id=${order.id} and status='LOADING'`,
     ))
       this.change(c, 'shipments', shipment.id, { status: 'VOIDED' });
-    for (const line of this.lines(order)) {
+    for (const line of lines) {
       const sent = this.total(
         sql`select coalesce(sum(l.dispatched_qty),0) n from shipment_lines l join shipments s on s.id=l.shipment_id where l.line_key=${line.line_key} and s.status!='VOIDED'`,
       );
       const prior = this.total(
         sql`select coalesce(sum(qty),0) n from cancellations where line_key=${line.line_key}`,
       );
-      const qty = line.qty - sent - prior;
+      const open = line.qty - sent - prior;
+      const qty = p.items
+        ? (p.items.find((item) => item.lineKey === line.line_key)?.qty ?? 0)
+        : open;
+      if (qty > open)
+        fail(
+          'CANCEL_EXCEEDED',
+          'Only unshipped, uncanceled units can be canceled',
+        );
       if (qty > 0) {
         this.add(c, 'cancellations', {
           id: randomUUID(),
@@ -900,6 +921,13 @@ export class CrmService {
     if (!canceledTotal)
       fail('NOTHING_TO_CANCEL', 'There are no unshipped units to cancel');
     if (
+      lines.every(
+        (line) =>
+          line.qty ===
+          this.total(
+            sql`select coalesce(sum(qty),0) n from cancellations where line_key=${line.line_key}`,
+          ),
+      ) &&
       !this.total(
         sql`select coalesce(sum(dispatched_qty),0) n from shipment_lines where order_id=${order.id}`,
       )
@@ -1964,6 +1992,93 @@ export class CrmService {
     }
     if (remaining)
       fail('FUNDING_MISMATCH', 'The credit has insufficient receipt backing');
+  }
+
+  private reverseCreditApplication(
+    c: Context,
+    p: Payload<'REVERSE_CREDIT_APPLICATION'>,
+  ) {
+    this.authorize(c, 'ACCOUNTS', 'ADMIN');
+    this.customer(c, p.customerId);
+    const original = this.one<{
+      id: string;
+      credit_note_id: string;
+      charge_id: string;
+      amount_paise: number;
+    }>(
+      sql`select * from credit_applications where id=${p.applicationId} and customer_id=${c.customerId} and amount_paise>0`,
+    );
+    if (!original)
+      fail(
+        'APPLICATION_NOT_FOUND',
+        'Select a credit application belonging to this customer',
+      );
+    const unreversed =
+      original.amount_paise +
+      this.total(
+        sql`select coalesce(sum(amount_paise),0) n from credit_applications where reversal_of_id=${original.id}`,
+      );
+    const applied = this.total(
+      sql`select coalesce(sum(amount_paise),0) n from credit_applications where credit_note_id=${original.credit_note_id} and charge_id=${original.charge_id}`,
+    );
+    if (p.amountPaise > Math.min(unreversed, applied))
+      fail(
+        'REVERSAL_EXCEEDED',
+        'The reversal exceeds the remaining applied credit',
+      );
+    const reversalId = randomUUID();
+    this.add(c, 'credit_applications', {
+      id: reversalId,
+      customer_id: c.customerId,
+      credit_note_id: original.credit_note_id,
+      charge_id: original.charge_id,
+      amount_paise: -p.amountPaise,
+      reversal_of_id: original.id,
+      reason: p.reason,
+      action_id: c.id,
+      created_at: c.now,
+    });
+    c.references.applicationId = original.id;
+    c.references.reversalId = reversalId;
+    c.references.creditNoteId = original.credit_note_id;
+  }
+
+  private reverseCreditRefund(c: Context, p: Payload<'REVERSE_CREDIT_REFUND'>) {
+    this.authorize(c, 'ACCOUNTS', 'ADMIN');
+    this.customer(c, p.customerId);
+    const original = this.one<{
+      id: string;
+      credit_note_id: string;
+      receipt_id: string;
+      amount_paise: number;
+    }>(
+      sql`select * from credit_refunds where id=${p.refundId} and customer_id=${c.customerId} and amount_paise>0`,
+    );
+    if (!original)
+      fail('REFUND_NOT_FOUND', 'Select a refund belonging to this customer');
+    const remaining =
+      original.amount_paise +
+      this.total(
+        sql`select coalesce(sum(amount_paise),0) n from credit_refunds where reversal_of_id=${original.id}`,
+      );
+    if (p.amountPaise > remaining)
+      fail('REVERSAL_EXCEEDED', 'The reversal exceeds the unreversed refund');
+    const reversalId = randomUUID();
+    this.add(c, 'credit_refunds', {
+      id: reversalId,
+      customer_id: c.customerId,
+      credit_note_id: original.credit_note_id,
+      receipt_id: original.receipt_id,
+      amount_paise: -p.amountPaise,
+      reversal_of_id: original.id,
+      reason: p.reason,
+      reference: p.reference,
+      action_id: c.id,
+      created_at: c.now,
+    });
+    c.references.refundId = original.id;
+    c.references.reversalId = reversalId;
+    c.references.creditNoteId = original.credit_note_id;
   }
 
   private correct(c: Context, p: Payload<'CORRECT_DISPATCHED_ORDER'>) {

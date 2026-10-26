@@ -6,6 +6,7 @@ import {
   sqliteTable,
   text,
   uniqueIndex,
+  type AnySQLiteColumn,
 } from 'drizzle-orm/sqlite-core';
 
 export const crmCustomers = sqliteTable(
@@ -457,6 +458,10 @@ export const crmCreditApplications = sqliteTable(
       .notNull()
       .references(() => crmReceivableEntries.id, { onDelete: 'cascade' }),
     amount_paise: integer('amount_paise').notNull(),
+    reversal_of_id: text('reversal_of_id').references(
+      (): AnySQLiteColumn => crmCreditApplications.id,
+    ),
+    reason: text('reason').notNull().default(''),
     action_id: text('action_id').notNull(),
     created_at: text('created_at').notNull(),
   },
@@ -464,6 +469,7 @@ export const crmCreditApplications = sqliteTable(
     index('credit_applications_customer_id_idx').on(t.customer_id),
     index('credit_applications_credit_note_id_idx').on(t.credit_note_id),
     index('credit_applications_charge_id_idx').on(t.charge_id),
+    index('credit_applications_reversal_idx').on(t.reversal_of_id),
     check(
       'credit_applications_amount_paise_check',
       sql`typeof(${t.amount_paise}) = 'integer'`,
@@ -485,6 +491,10 @@ export const crmCreditRefunds = sqliteTable(
       .notNull()
       .references(() => crmPaymentReceipts.id, { onDelete: 'cascade' }),
     amount_paise: integer('amount_paise').notNull(),
+    reversal_of_id: text('reversal_of_id').references(
+      (): AnySQLiteColumn => crmCreditRefunds.id,
+    ),
+    reason: text('reason').notNull().default(''),
     reference: text('reference').notNull(),
     action_id: text('action_id').notNull(),
     created_at: text('created_at').notNull(),
@@ -493,9 +503,10 @@ export const crmCreditRefunds = sqliteTable(
     index('credit_refunds_customer_id_idx').on(t.customer_id),
     index('credit_refunds_credit_note_id_idx').on(t.credit_note_id),
     index('credit_refunds_receipt_id_idx').on(t.receipt_id),
+    index('credit_refunds_reversal_idx').on(t.reversal_of_id),
     check(
       'credit_refunds_amount_paise_check',
-      sql`typeof(${t.amount_paise}) = 'integer' and ${t.amount_paise} > 0`,
+      sql`typeof(${t.amount_paise}) = 'integer' and ((${t.amount_paise} > 0 and ${t.reversal_of_id} is null) or (${t.amount_paise} < 0 and ${t.reversal_of_id} is not null))`,
     ),
   ],
 );

@@ -54,7 +54,15 @@ export const crmActionSchema = z.discriminatedUnion('type', [
       .min(1)
       .max(100),
   }),
-  action('CANCEL_REMAINDER', { orderId: id, reason }),
+  action('CANCEL_REMAINDER', {
+    orderId: id,
+    reason,
+    items: z
+      .array(z.object({ lineKey: id, qty: quantity }).strict())
+      .min(1)
+      .max(100)
+      .optional(),
+  }),
   action('RECORD_RETURN', {
     orderId: id,
     items: z
@@ -70,7 +78,7 @@ export const crmActionSchema = z.discriminatedUnion('type', [
     reference: z.string().trim().min(1).max(200),
   }),
   action('ALLOCATE_PAYMENT', { customerId: id }),
-  action('REDEEM_POINTS', { customerId: id, chargeId: id, points: quantity }),
+  action('REDEEM_POINTS', { customerId: id, chargeId: id, points: amount }),
   action('ISSUE_CREDIT_NOTE', { customerId: id, amountPaise: amount, reason }),
   action('APPLY_CREDIT_NOTE', {
     customerId: id,
@@ -82,6 +90,19 @@ export const crmActionSchema = z.discriminatedUnion('type', [
     customerId: id,
     creditNoteId: id,
     amountPaise: amount,
+    reference: reason,
+  }),
+  action('REVERSE_CREDIT_APPLICATION', {
+    customerId: id,
+    applicationId: id,
+    amountPaise: amount,
+    reason,
+  }),
+  action('REVERSE_CREDIT_REFUND', {
+    customerId: id,
+    refundId: id,
+    amountPaise: amount,
+    reason,
     reference: reason,
   }),
   action('CORRECT_DISPATCHED_ORDER', {

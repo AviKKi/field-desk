@@ -99,6 +99,16 @@ const OPERATIONS: Array<{ type: CommandType; label: string; roles: Role[] }> = [
     roles: ['ACCOUNTS'],
   },
   {
+    type: 'REVERSE_CREDIT_APPLICATION',
+    label: 'Reverse credit application',
+    roles: ['ACCOUNTS'],
+  },
+  {
+    type: 'REVERSE_CREDIT_REFUND',
+    label: 'Reverse credit refund',
+    roles: ['ACCOUNTS'],
+  },
+  {
     type: 'CORRECT_DISPATCHED_ORDER',
     label: 'Record shipment correction',
     roles: ['KAM'],
@@ -111,6 +121,8 @@ const ACCOUNT_OPERATIONS = [
   'ISSUE_CREDIT_NOTE',
   'APPLY_CREDIT_NOTE',
   'REFUND_CREDIT_NOTE',
+  'REVERSE_CREDIT_APPLICATION',
+  'REVERSE_CREDIT_REFUND',
 ];
 export function money(paise: number) {
   return new Intl.NumberFormat('en-IN', {
@@ -358,6 +370,8 @@ export function OperationsPage() {
     'RECORD_RETURN',
     'ISSUE_CREDIT_NOTE',
     'CORRECT_DISPATCHED_ORDER',
+    'REVERSE_CREDIT_APPLICATION',
+    'REVERSE_CREDIT_REFUND',
   ].includes(operation);
   const accountOperation = ACCOUNT_OPERATIONS.includes(operation);
 
@@ -433,6 +447,13 @@ export function OperationsPage() {
       }
       if (operation === 'APPROVE_ORDER' || operation === 'REJECT_ORDER')
         payload.revision = detail?.order.current_revision;
+      if (operation === 'CANCEL_REMAINDER')
+        payload.items = (detail?.lines ?? [])
+          .map((line) => ({
+            lineKey: line.lineKey,
+            qty: Number(data.get(`cancel-${line.lineKey}`)),
+          }))
+          .filter((item) => item.qty > 0);
       if (operation === 'START_LOADING')
         payload.items = (detail?.lines ?? [])
           .map((line) => ({
@@ -465,12 +486,15 @@ export function OperationsPage() {
           'ISSUE_CREDIT_NOTE',
           'APPLY_CREDIT_NOTE',
           'REFUND_CREDIT_NOTE',
+          'REVERSE_CREDIT_APPLICATION',
+          'REVERSE_CREDIT_REFUND',
         ].includes(operation)
       )
         payload.amountPaise = paise(data.get('amount'));
       if (
         operation === 'RECEIVE_CUSTOMER_PAYMENT' ||
-        operation === 'REFUND_CREDIT_NOTE'
+        operation === 'REFUND_CREDIT_NOTE' ||
+        operation === 'REVERSE_CREDIT_REFUND'
       )
         payload.reference = reference;
       if (operation === 'REDEEM_POINTS') {
@@ -484,6 +508,10 @@ export function OperationsPage() {
         operation === 'REFUND_CREDIT_NOTE'
       )
         payload.creditNoteId = data.get('credit');
+      if (operation === 'REVERSE_CREDIT_APPLICATION')
+        payload.applicationId = data.get('settlement');
+      if (operation === 'REVERSE_CREDIT_REFUND')
+        payload.refundId = data.get('settlement');
       if (operation === 'CORRECT_DISPATCHED_ORDER') {
         payload.evidence = data.get('evidence');
         payload.authorizationReference = data.get('authorization');
@@ -992,6 +1020,25 @@ export function OperationsPage() {
                       })}
                     </div>
                   )}
+                  {operation === 'CANCEL_REMAINDER' &&
+                    detail?.lines
+                      .filter((line) => line.open > 0)
+                      .map((line) => (
+                        <Field
+                          key={line.lineKey}
+                          label={`${line.code} · ${line.open} unshipped`}
+                          name={`cancel-${line.lineKey}`}
+                        >
+                          <Input
+                            id={`cancel-${line.lineKey}`}
+                            name={`cancel-${line.lineKey}`}
+                            type="number"
+                            min="0"
+                            max={line.open}
+                            defaultValue={line.open}
+                          />
+                        </Field>
+                      ))}
                   {operation === 'START_LOADING' &&
                     detail?.lines.map((line) => (
                       <Field
@@ -1083,6 +1130,8 @@ export function OperationsPage() {
                     'ISSUE_CREDIT_NOTE',
                     'APPLY_CREDIT_NOTE',
                     'REFUND_CREDIT_NOTE',
+                    'REVERSE_CREDIT_APPLICATION',
+                    'REVERSE_CREDIT_REFUND',
                   ].includes(operation) && (
                     <Field label="Amount (₹)" name="amount">
                       <Input
@@ -1094,9 +1143,11 @@ export function OperationsPage() {
                       />
                     </Field>
                   )}
-                  {['RECEIVE_CUSTOMER_PAYMENT', 'REFUND_CREDIT_NOTE'].includes(
-                    operation,
-                  ) && (
+                  {[
+                    'RECEIVE_CUSTOMER_PAYMENT',
+                    'REFUND_CREDIT_NOTE',
+                    'REVERSE_CREDIT_REFUND',
+                  ].includes(operation) && (
                     <Field label="Bank / receipt reference" name="reference">
                       <Input
                         id="reference"
@@ -1166,6 +1217,43 @@ export function OperationsPage() {
                             </option>
                           ))}
                       </NativeSelect>
+                    </Field>
+                  )}
+                  {[
+                    'REVERSE_CREDIT_APPLICATION',
+                    'REVERSE_CREDIT_REFUND',
+                  ].includes(operation) && (
+                    <Field
+                      label={
+                        operation === 'REVERSE_CREDIT_APPLICATION'
+                          ? 'Credit application'
+                          : 'Recorded refund'
+                      }
+                      name="settlement"
+                    >
+                      <NativeSelect
+                        id="settlement"
+                        name="settlement"
+                        className="w-full"
+                        required
+                      >
+                        <option value="">Select an entry</option>
+                        {(operation === 'REVERSE_CREDIT_APPLICATION'
+                          ? ledger?.creditApplications
+                          : ledger?.refunds
+                        )
+                          ?.filter((row) => Number(row.amount_paise) > 0)
+                          .map((row) => (
+                            <option key={String(row.id)} value={String(row.id)}>
+                              {String(row.id).slice(0, 8)} ·{' '}
+                              {money(Number(row.amount_paise))}
+                            </option>
+                          ))}
+                      </NativeSelect>
+                      <p className="text-xs text-muted-foreground">
+                        Enter the amount to reverse. The original entry remains
+                        in account history.
+                      </p>
                     </Field>
                   )}
                   {needsReason && (

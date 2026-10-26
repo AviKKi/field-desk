@@ -1017,4 +1017,173 @@ describe('CRM operations', { concurrency: false }, () => {
     }
     assert.ok(appliedCount >= 600);
   });
+  it('reverses settlements with bounded compensating entries and retains original evidence', () => {
+    const report = crm.scenario('credit-settlement', admin);
+    const customerId = report.customerId;
+    const original = crm
+      .ledger(customerId)
+      .creditApplications.find((row) => Number(row.amount_paise) > 0)!;
+    const originalCopy = { ...original };
+    const command: CrmCommand = {
+      type: 'REVERSE_CREDIT_APPLICATION',
+      payload: {
+        customerId,
+        applicationId: String(original.id),
+        amountPaise: 3000,
+        reason: 'Correct settlement attribution',
+      },
+    };
+    const version = crm.summary(customerId).customer.version;
+    const key = randomUUID();
+    const reversed = run(command, admin, version, key);
+    assert.equal(reversed.status, 'APPLIED');
+    assert.deepEqual(run(command, admin, version, key), reversed);
+    let summary = crm.summary(customerId);
+    assert.equal(summary.creditsOpenPaise, 3000);
+    assert.equal(summary.outstandingPaise, 5000);
+    assert.deepEqual(
+      crm
+        .ledger(customerId)
+        .creditApplications.find((row) => row.id === original.id),
+      originalCopy,
+    );
+    const before = crm.ledger(customerId);
+    assert.equal(
+      run({ ...command, payload: { ...command.payload, amountPaise: 8000 } })
+        .status,
+      'REJECTED',
+    );
+    assert.deepEqual(crm.ledger(customerId), before);
+    const note = summary.credits[0]!;
+    const refund = run({
+      type: 'REFUND_CREDIT_NOTE',
+      payload: {
+        customerId,
+        creditNoteId: note.id,
+        amountPaise: 3000,
+        reference: 'Transfer sent',
+      },
+    });
+    assert.equal(refund.status, 'APPLIED');
+    const refundRow = crm
+      .ledger(customerId)
+      .refunds.find((row) => row.action_id === refund.actionId)!;
+    const refundCopy = { ...refundRow };
+    const reverseRefund: CrmCommand = {
+      type: 'REVERSE_CREDIT_REFUND',
+      payload: {
+        customerId,
+        refundId: String(refundRow.id),
+        amountPaise: 1000,
+        reason: 'Bank transfer partially returned',
+        reference: 'BANK-RETURN-01',
+      },
+    };
+    const refundedNet = crm.summary(customerId).netBalancePaise;
+    assert.equal(run(reverseRefund).status, 'APPLIED');
+    summary = crm.summary(customerId);
+    assert.equal(summary.refundsPaise, 2000);
+    assert.equal(summary.creditsOpenPaise, 1000);
+    assert.equal(summary.netBalancePaise, refundedNet - 1000);
+    assert.deepEqual(
+      crm.ledger(customerId).refunds.find((row) => row.id === refundRow.id),
+      refundCopy,
+    );
+    assert.equal(
+      run({
+        ...reverseRefund,
+        payload: { ...reverseRefund.payload, amountPaise: 2001 },
+      }).status,
+      'REJECTED',
+    );
+    assert.equal(
+      run({
+        ...reverseRefund,
+        payload: { ...reverseRefund.payload, amountPaise: 2000 },
+      }).status,
+      'APPLIED',
+    );
+    assert.equal(crm.summary(customerId).refundsPaise, 0);
+    assert.equal(run(reverseRefund).status, 'REJECTED');
+    const otherCustomer = crm.createCustomer(admin, {
+      name: 'Other customer',
+      code: randomUUID(),
+    });
+    assert.equal(
+      run({
+        ...reverseRefund,
+        payload: { ...reverseRefund.payload, customerId: otherCustomer.id },
+      }).status,
+      'REJECTED',
+    );
+    const warehouse = crm
+      .bootstrap(admin)
+      .actors.find((user) => user.role === 'WAREHOUSE')!;
+    assert.equal(run(command, warehouse).errors[0]?.code, 'FORBIDDEN');
+    check(crm.summary(customerId));
+  });
+
+  it('cancels selected unshipped quantities and preserves other demand and dispatched history', () => {
+    const report = crm.scenario('partial-delivery', admin);
+    const customerId = report.customerId;
+    const order = crm
+      .bootstrap(admin)
+      .orders.find((row) => row.customer_id === customerId)!;
+    const before = crm.detail(order.id);
+    const first = before.lines[0]!;
+    const canceled = run({
+      type: 'CANCEL_REMAINDER',
+      payload: {
+        orderId: order.id,
+        reason: 'Reduce the first line only',
+        items: [{ lineKey: first.lineKey, qty: 3 }],
+      },
+    });
+    assert.equal(canceled.status, 'APPLIED');
+    const detail = crm.detail(order.id);
+    assert.equal(detail.lines[0]!.canceled, 3);
+    assert.equal(detail.lines[0]!.open, 7);
+    assert.equal(detail.lines[1]!.open, 5);
+    assert.deepEqual(detail.shipments, before.shipments);
+    const bad = run({
+      type: 'CANCEL_REMAINDER',
+      payload: {
+        orderId: order.id,
+        reason: 'Invalid cancellation',
+        items: [{ lineKey: first.lineKey, qty: 8 }],
+      },
+    });
+    assert.equal(bad.errors[0]?.code, 'CANCEL_EXCEEDED');
+    assert.deepEqual(crm.detail(order.id), detail);
+    check(crm.summary(customerId));
+    const created = run({
+      type: 'PUNCH_ORDER',
+      payload: {
+        customerId,
+        items: [{ skuId: 'sku-a', qty: 5, unitPricePaise: 10000 }],
+      },
+    });
+    const id = created.references.orderId!;
+    assert.equal(
+      run({
+        type: 'CANCEL_REMAINDER',
+        payload: {
+          orderId: id,
+          reason: 'Partly cancel a draft',
+          items: [{ lineKey: crm.detail(id).lines[0]!.lineKey, qty: 2 }],
+        },
+      }).status,
+      'APPLIED',
+    );
+    assert.equal(crm.detail(id).order.status, 'DRAFT');
+    assert.equal(crm.detail(id).lines[0]!.open, 3);
+    assert.equal(
+      run({
+        type: 'CANCEL_REMAINDER',
+        payload: { orderId: id, reason: 'Cancel the remaining draft' },
+      }).status,
+      'APPLIED',
+    );
+    assert.equal(crm.detail(id).order.status, 'CANCELLED');
+  });
 });
