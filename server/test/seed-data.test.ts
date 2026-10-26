@@ -6,7 +6,6 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Test } from '@nestjs/testing';
 import type { INestApplicationContext } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { sql } from 'drizzle-orm';
 import type { User } from '@crm/shared';
@@ -65,7 +64,6 @@ describe('Local CRM dataset', { concurrency: false }, () => {
         'business_events',
         'action_requests',
         'seed_history',
-        'sample_runs',
       ]
         .map((table) => [
           table,
@@ -148,7 +146,14 @@ describe('Local CRM dataset', { concurrency: false }, () => {
       'credit_refunds',
     ])
       assert.ok(tables[table]! > 0, table);
-    assert.equal(tables.sample_runs, 0);
+    assert.deepEqual(
+      database.sqlite
+        .prepare(
+          "select name from sqlite_master where type='table' and name in ('sample_runs','sample_steps')",
+        )
+        .all(),
+      [],
+    );
     assert.deepEqual(database.sqlite.pragma('foreign_key_check'), []);
   });
 
@@ -198,7 +203,11 @@ describe('Local CRM dataset', { concurrency: false }, () => {
   });
 
   it('rolls back incomplete seeding and can seed again after a deliberate local reset', () => {
-    crm.reset(admin, 'RESET CRM DATA');
+    database.db.transaction(() => {
+      database.db.run(sql`delete from action_requests`);
+      database.db.run(sql`delete from customers`);
+      database.db.run(sql`delete from seed_history`);
+    });
     assert.equal(counts().seed_history, 0);
     database.db.run(sql`update users set active=0 where role='KAM'`);
     const before = counts();
@@ -216,16 +225,16 @@ describe('Local CRM dataset', { concurrency: false }, () => {
   });
 
   it('rejects production use and non-administrator callers without changes', () => {
-    const config = app.get(ConfigService);
+    const previousEnvironment = process.env.NODE_ENV;
     const before = counts();
-    config.set('NODE_ENV', 'production');
+    process.env.NODE_ENV = 'production';
     try {
       assert.throws(
         () => seedDevelopmentData(database, crm, admin),
         /local administrators/,
       );
     } finally {
-      config.set('NODE_ENV', 'test');
+      process.env.NODE_ENV = previousEnvironment;
     }
     const sales = crm
       .bootstrap(admin)

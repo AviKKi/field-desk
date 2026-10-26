@@ -1,9 +1,9 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { z } from 'zod';
-import { actionEnvelopeSchema, SCENARIOS } from '@crm/shared/crm';
+import { actionEnvelopeSchema } from '@crm/shared/crm';
 import type { ActionEnvelope } from '@crm/shared/crm';
 import type { User } from '@crm/shared';
-import { CurrentUser, Roles } from '../auth/auth.decorators.js';
+import { CurrentUser } from '../auth/auth.decorators.js';
 import { ZodValidationPipe } from '../common/validation.pipe.js';
 import { CrmService } from './crm.service.js';
 
@@ -13,44 +13,9 @@ const customerSchema = z
     code: z.string().trim().min(2).max(40),
   })
   .strict();
-const resetSchema = z
-  .object({ confirmation: z.literal('RESET CRM DATA') })
-  .strict();
-const scenarioSchema = z.enum(SCENARIOS.map(([id]) => id));
-const sampleSchema = z.object({ scenarioId: scenarioSchema }).strict();
-
 @Controller('crm')
 export class CrmController {
   constructor(private readonly crm: CrmService) {}
-  @Roles('ADMIN')
-  @Get('samples')
-  savedSamples(@CurrentUser() user: User) {
-    return this.crm.savedSamples(user);
-  }
-  @Roles('ADMIN')
-  @Get('samples/:id')
-  sampleReport(@Param('id') id: string, @CurrentUser() user: User) {
-    return this.crm.sampleReport(id, user);
-  }
-  @Roles('ADMIN')
-  @Post('samples')
-  startSample(
-    @Body(new ZodValidationPipe(sampleSchema))
-    input: z.infer<typeof sampleSchema>,
-    @CurrentUser() user: User,
-  ) {
-    return this.crm.startSample(input.scenarioId, user);
-  }
-  @Roles('ADMIN')
-  @Post('samples/:id/step')
-  stepSample(@Param('id') id: string, @CurrentUser() user: User) {
-    return this.crm.advanceSample(id, user);
-  }
-  @Roles('ADMIN')
-  @Post('samples/:id/run')
-  finishSample(@Param('id') id: string, @CurrentUser() user: User) {
-    return this.crm.advanceSample(id, user, true);
-  }
   @Get('bootstrap')
   bootstrap(@CurrentUser() user: User) {
     return this.crm.bootstrap(user);
@@ -105,27 +70,5 @@ export class CrmController {
   @Get('actions/:id/trace')
   trace(@Param('id') id: string, @CurrentUser() user: User) {
     return this.crm.trace(id, user);
-  }
-  @Roles('ADMIN')
-  @Post('seed')
-  seed(@CurrentUser() user: User) {
-    return this.crm.seed(user);
-  }
-  @Roles('ADMIN')
-  @Post('reset')
-  reset(
-    @Body(new ZodValidationPipe(resetSchema))
-    input: z.infer<typeof resetSchema>,
-    @CurrentUser() user: User,
-  ) {
-    return this.crm.reset(user, input.confirmation);
-  }
-  @Roles('ADMIN')
-  @Post('scenarios/:id/run')
-  scenario(
-    @Param('id', new ZodValidationPipe(scenarioSchema)) id: string,
-    @CurrentUser() user: User,
-  ) {
-    return this.crm.scenario(id, user);
   }
 }

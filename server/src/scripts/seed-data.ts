@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { seedReferenceData } from './seed-reference-data.js';
 import type { User, Role } from '@crm/shared';
 import type { CrmCommand, Customer } from '@crm/shared/crm';
 import type { DatabaseService } from '../database/database.service.js';
@@ -17,7 +18,7 @@ export function seedDevelopmentData(
 ): SeedSummary & { alreadyPresent: boolean } {
   return database.db.transaction(
     () => {
-      crm.seed(admin);
+      seedReferenceData(database, admin);
       const previous = database.db.get<{ summary: string }>(
         sql`select summary from seed_history where id=${datasetId}`,
       );

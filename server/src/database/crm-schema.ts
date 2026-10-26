@@ -627,34 +627,8 @@ export const crmActionRequests = sqliteTable(
   ],
 );
 
-export const crmSampleRuns = sqliteTable('sample_runs', {
-  id: text('id').primaryKey(),
-  scenario_id: text('scenario_id').notNull(),
-  customer_id: text('customer_id')
-    .notNull()
-    .references(() => crmCustomers.id, { onDelete: 'cascade' }),
-  requester_id: text('requester_id').notNull(),
-  complete: integer('complete').notNull().default(0),
-  created_at: text('created_at').notNull(),
-});
-
 export const crmSeedHistory = sqliteTable('seed_history', {
   id: text('id').primaryKey(),
   summary: text('summary').notNull(),
   created_at: text('created_at').notNull(),
 });
-
-export const crmSampleSteps = sqliteTable(
-  'sample_steps',
-  {
-    id: text('id').primaryKey(),
-    run_id: text('run_id')
-      .notNull()
-      .references(() => crmSampleRuns.id, { onDelete: 'cascade' }),
-    position: integer('position').notNull(),
-    label: text('label').notNull(),
-    envelope: text('envelope').notNull(),
-    result: text('result').notNull(),
-  },
-  (t) => [uniqueIndex('sample_steps_position_idx').on(t.run_id, t.position)],
-);

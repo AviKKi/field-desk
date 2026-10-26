@@ -45,6 +45,8 @@ it('upgrades existing funded settlements without losing original records', () =>
       insert into credit_funds values ('fund','note','receipt',5000);
       insert into credit_applications values ('application','c','note','charge',1000,'old-action','2026-10-01');
       insert into credit_refunds values ('refund','c','note','receipt',2000,'BANK-REFUND','old-action','2026-10-01');
+      insert into sample_runs values ('old-run','partial-delivery','c','previous-admin',0,'2026-10-01');
+      insert into sample_steps values ('old-step','old-run',0,'Create order','{}','{}');
     `);
     const tables = [
       'customers',
@@ -88,6 +90,14 @@ it('upgrades existing funded settlements without losing original records', () =>
     );
     sqlite.exec(
       `insert into credit_refunds values ('reverse-refund','c','note','receipt',-500,'refund','Bank transfer returned','BANK-RETURN','new-action','2026-10-26')`,
+    );
+    assert.deepEqual(
+      sqlite
+        .prepare(
+          "select name from sqlite_master where type='table' and name in ('sample_runs','sample_steps')",
+        )
+        .all(),
+      [],
     );
     assert.deepEqual(sqlite.pragma('foreign_key_check'), []);
     assert.equal(

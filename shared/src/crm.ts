@@ -348,37 +348,3 @@ export interface CrmBootstrap {
   orders: OrderListRow[];
   actors: User[];
 }
-export const SCENARIOS = [
-  ['partial-delivery', 'Partial delivery'],
-  ['reapproval', 'Commercial revision'],
-  ['dispatch-edit', 'Dispatched order edit'],
-  ['second-delivery', 'Second shipment'],
-  ['cancel-order', 'Cancel an open order'],
-  ['cancel-remainder', 'Cancel an unshipped remainder'],
-  ['paid-return', 'Paid return with a deduction'],
-  ['customer-payment', 'Payment across two orders'],
-  ['redemption', 'Redeem available points'],
-  ['spent-return', 'Return after redemption'],
-  ['credit-settlement', 'Apply a return credit'],
-  ['shipment-correction', 'Additional shipped items'],
-  ['receipt-retry', 'Repeated payment request'],
-  ['competing-returns', 'Competing return requests'],
-] as const;
-export interface ScenarioReport {
-  id: string;
-  runId?: string;
-  complete?: boolean;
-  customerId: string;
-  steps: Array<{ label: string; result: ActionResult }>;
-  summary: CustomerSummary;
-}
-
-export interface SavedWorkflow {
-  id: string;
-  scenarioId: string;
-  customerId: string;
-  customerName: string;
-  complete: boolean;
-  stepCount: number;
-  createdAt: string;
-}

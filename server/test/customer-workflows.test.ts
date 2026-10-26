@@ -18,6 +18,7 @@ import type {
 import { DatabaseService } from '../src/database/database.service.js';
 import { UsersService } from '../src/users/users.service.js';
 import { configureApp } from '../src/configure-app.js';
+import { seedReferenceData } from '../src/scripts/seed-reference-data.js';
 import { HttpDesk } from './support/http-desk.js';
 
 const directory = mkdtempSync(join(tmpdir(), 'customer-workflows-'));
@@ -95,6 +96,7 @@ describe('Customer workflows through HTTP', { concurrency: false }, () => {
       password,
       role: 'ADMIN',
     });
+    seedReferenceData(app.get(DatabaseService), admin);
     await app.init();
     const login = await request(app.getHttpServer())
       .post('/api/auth/login')
@@ -102,7 +104,7 @@ describe('Customer workflows through HTTP', { concurrency: false }, () => {
       .expect(200);
     const headers = login.headers['set-cookie'] as unknown as string[];
     desk = new HttpDesk(app, headers[0]!.split(';')[0]!);
-    const catalog = await desk.post<CrmBootstrap>('seed', {});
+    const catalog = await desk.read<CrmBootstrap>('bootstrap');
     assert.deepEqual(
       catalog.skus.map((sku) => [sku.id, sku.price_paise, sku.points_per_unit]),
       [
