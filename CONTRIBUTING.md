@@ -25,6 +25,7 @@ For unattended admin creation, supply `ADMIN_NAME`, `ADMIN_EMAIL`, and `ADMIN_PA
 | `pnpm dev:server`   | Build shared contracts and watch the API                                  |
 | `pnpm dev:client`   | Run Vite; build shared first on a fresh checkout                          |
 | `pnpm check`        | Lint, type-check, run API tests, and build                                |
+| `pnpm metrics`      | Write source counts and file hashes to `reports/source-metrics.json`      |
 | `pnpm format:check` | Check formatting                                                          |
 | `pnpm db:generate`  | Generate a migration after changing the Drizzle schema                    |
 | `pnpm db:migrate`   | Apply committed migrations                                                |
@@ -36,7 +37,9 @@ Keep migration SQL and its Drizzle metadata together in version control. Migrati
 
 ## Verification
 
-API tests use a temporary SQLite file, real migrations, NestJS, and HTTP requests. They verify role boundaries, input validation, session revocation, CSRF origin checks, and credential rate limits.
+API tests use temporary SQLite files, real migrations, NestJS, and HTTP requests. They verify authentication, role boundaries, input validation, sessions, CSRF checks, rate limits, business workflows, settlement reversals, concurrency, idempotency, and upgrade safety. The customer workflow suite submits its own HTTP actions and verifies independently calculated outcomes across fourteen canonical cases and 200 deterministic mixed sequences. Its request limit is raised only inside that test application; authentication and permissions remain active, and the authentication suite tests normal rate limiting.
+
+`pnpm test` writes the workflow outcomes, action latencies, and memory sample to `reports/customer-workflows.json`. `pnpm metrics` writes TypeScript source counts and file hashes. Generated reports are ignored by Git. See [verification](docs/verification.md) for coverage, measurement definitions, and limitations.
 
 ## Changes
 
@@ -49,3 +52,4 @@ Keep browser code out of `server` and server code out of `shared`. Shared contra
 - [Architecture and deployment](docs/architecture.md)
 - [API reference](docs/api.md)
 - [Operations desk](docs/operations.md)
+- [Verification](docs/verification.md)

@@ -18,11 +18,17 @@ Choose a customer, an order when applicable, and an operation. Enter the details
 
 The customer selector shows the account being worked on. The order selector limits the order detail to that customer. The cards show the account position, outstanding charges, unapplied cash, open credit, and points buckets.
 
-The order table keeps ordered, shipped, delivered, returned, canceled, and open quantities separate. Shipment cards show each physical batch and any recorded supplement. The history tab preserves commercial revisions and the order's activity timeline.
+The order table keeps ordered, shipped, delivered, returned, canceled, and open quantities separate. Shipment cards show each physical batch and any recorded supplement. The history tab preserves commercial revisions and the customer's full activity timeline, including receipts and settlements from other orders.
 
 Account activity includes charges and adjustments, receipts, allocations, credit notes and applications, recorded refunds, reward postings, redemptions, returns, and shipment corrections. Expand an entry for its identifiers and source references.
 
-An activity result shows whether it was applied, rejected, needs more information, or encountered a concurrent change. Expand **Recorded changes** to inspect the database records affected. **Retry request** resends the original request key; it does not create a fresh activity. **Export activity** downloads the current result and any loaded sample workflow report as JSON.
+For cancellation, enter the quantities to cancel on each line. Zero leaves that line's demand open; only unshipped quantities are eligible. Pending loading documents are voided and can be prepared again for the remaining demand.
+
+Accounts can select **Reverse credit application** or **Reverse credit refund**, choose the original entry, and enter a partial or full amount and reason. A refund reversal also needs a bank reference. Review earlier reversals and return activity when choosing the amount: only the remaining applied or refunded value can be reversed. The original entry remains visible, with a separate negative posting for the correction.
+
+**Account checks** shows the current customer's quantity, approval, delivery-charge, funding, balance, and reward checks. Expand a check to see the arithmetic and source references. Activity details retain the checks performed when that activity was applied; the live tab reflects the current version. The recorded business-term version identifies the conventions used.
+
+An activity result shows whether it was applied, rejected, needs more information, or encountered a concurrent change. Expand **Recorded changes** to inspect posting explanations, source references, acting staff, and before/after records. **Retry request** resends the original request key; it does not create a fresh activity. **Export activity** downloads the current result and any loaded sample workflow report as JSON.
 
 For returns, credit applications, and point redemptions, **Send competing requests** submits the same activity twice with separate request keys and the same record version. The two outcomes can be inspected separately.
 
@@ -44,4 +50,6 @@ Forms accept INR amounts with at most two decimal places. The API stores monetar
 
 - [Documentation index](README.md)
 - [API reference](api.md)
+- [Business terms](business-terms.md)
+- [Verification](verification.md)
 - [Development setup](../CONTRIBUTING.md)

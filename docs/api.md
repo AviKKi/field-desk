@@ -21,15 +21,18 @@ Roles are `SALES`, `KAM`, `WAREHOUSE`, `ACCOUNTS`, and `ADMIN`. Public user fiel
 
 ## CRM reads and reference data
 
-| Method | Route                        | Purpose                                                     |
-| ------ | ---------------------------- | ----------------------------------------------------------- |
-| GET    | `/crm/bootstrap`             | Customers, catalog, orders, and available staff             |
-| GET    | `/crm/orders/:id`            | Order, lines, shipments, revisions, approvals, and timeline |
-| GET    | `/crm/orders/:id/timeline`   | Order activity                                              |
-| GET    | `/crm/customers/:id/summary` | Account position, charges, credits, and points              |
-| GET    | `/crm/customers/:id/ledger`  | Posting history and source documents                        |
-| GET    | `/crm/actions/:id/trace`     | Recorded action result; requester, actor, or Admin only     |
-| POST   | `/crm/customers`             | Create `{ name, code }`; Sales, Accounts, or Admin          |
+| Method | Route                         | Purpose                                                                |
+| ------ | ----------------------------- | ---------------------------------------------------------------------- |
+| GET    | `/crm/bootstrap`              | Customers, catalog, orders, and available staff                        |
+| GET    | `/crm/orders/:id`             | Order, lines, shipments, revisions, approvals, and timeline            |
+| GET    | `/crm/orders/:id/timeline`    | Order activity                                                         |
+| GET    | `/crm/customers/:id/summary`  | Account position, charges, credits, and points                         |
+| GET    | `/crm/customers/:id/ledger`   | Posting history and source documents                                   |
+| GET    | `/crm/customers/:id/timeline` | All customer activities, including receipts and settlements            |
+| GET    | `/crm/customers/:id/review`   | Versioned account consistency checks                                   |
+| GET    | `/crm/customers/:id/snapshot` | Summary, orders, ledgers, timeline, and checks in one read transaction |
+| GET    | `/crm/actions/:id/trace`      | Recorded action result; requester, actor, or Admin only                |
+| POST   | `/crm/customers`              | Create `{ name, code }`; Sales, Accounts, or Admin                     |
 
 The signed-in user's active role governs operations. Only an Admin may choose another active staff member through `actorId`; the submitted payload cannot grant that staff member a different role.
 
@@ -54,11 +57,15 @@ Send `POST /crm/actions` with this envelope:
 
 Order operations use the order's version; account operations use the customer's version. Every applied action advances the customer and its order versions. Reuse the complete original envelope for a retry. A reused key with different input returns an idempotency conflict. Resolve a conflict by refreshing and submitting the intended new action with a fresh key and current version.
 
-Supported types are `PUNCH_ORDER`, `EDIT_ORDER`, `SUBMIT_ORDER`, `APPROVE_ORDER`, `REJECT_ORDER`, `START_LOADING`, `DISPATCH_SHIPMENT`, `CONFIRM_DELIVERY`, `CANCEL_REMAINDER`, `RECORD_RETURN`, `RECEIVE_CUSTOMER_PAYMENT`, `ALLOCATE_PAYMENT`, `REDEEM_POINTS`, `ISSUE_CREDIT_NOTE`, `APPLY_CREDIT_NOTE`, `REFUND_CREDIT_NOTE`, and `CORRECT_DISPATCHED_ORDER`.
+Supported types are `PUNCH_ORDER`, `EDIT_ORDER`, `SUBMIT_ORDER`, `APPROVE_ORDER`, `REJECT_ORDER`, `START_LOADING`, `DISPATCH_SHIPMENT`, `CONFIRM_DELIVERY`, `CANCEL_REMAINDER`, `RECORD_RETURN`, `RECEIVE_CUSTOMER_PAYMENT`, `ALLOCATE_PAYMENT`, `REDEEM_POINTS`, `ISSUE_CREDIT_NOTE`, `APPLY_CREDIT_NOTE`, `REFUND_CREDIT_NOTE`, `REVERSE_CREDIT_APPLICATION`, `REVERSE_CREDIT_REFUND`, and `CORRECT_DISPATCHED_ORDER`.
+
+`CANCEL_REMAINDER` accepts optional `items: [{ lineKey, qty }]` to cancel selected unshipped quantities; omit `items` to cancel all eligible demand. An explicit empty list is rejected.
+
+`REVERSE_CREDIT_APPLICATION` accepts `{ customerId, applicationId, amountPaise, reason }`. `REVERSE_CREDIT_REFUND` accepts `{ customerId, refundId, amountPaise, reason, reference }`. Both require Accounts or Admin, preserve original entries, append bounded negative entries, and use the customer version. A bank reference is required for refund reversal. See [business terms](business-terms.md) for amounts eligible for reversal.
 
 The exact payload schemas and response types are exported by `@crm/shared/crm`. Unknown fields are rejected. Monetary fields are integer paise. Receipts accept a customer rather than an order identifier. A correction includes its reason, evidence, authorization reference, additional units, delivered quantities, and explicit physical dispatch details.
 
-Action responses contain `status`, `actionId`, `errors`, `decisions`, `effects`, `trace`, `aggregateVersions`, and document `references`. Status is `APPLIED`, `REJECTED`, `NEEDS_DECISION`, or `CONFLICT`. Domain outcomes use this envelope; malformed requests return 400 and authentication or impersonation failures use 401/403. No domain records are committed on rejected or unresolved actions. The request outcome is retained for retries.
+Action responses contain `status`, `actionId`, `errors`, `decisions`, `effects`, `trace`, `aggregateVersions`, and document `references`. New results include `termsVersion` and, for applied activities, a `review` with `customerId`, `customerVersion`, `termsVersion`, `checkedAt`, and checks (`id`, `label`, `passed`, `details`, `references`). Each effect includes a reason, source reference, and provenance identifying its action, acting staff member, requester, and applicable commercial/shipment references. Older saved activities retain their original envelope without these newer optional fields. Status is `APPLIED`, `REJECTED`, `NEEDS_DECISION`, or `CONFLICT`. Domain outcomes use this envelope; malformed requests return 400 and authentication or impersonation failures use 401/403. No domain records are committed on rejected or unresolved actions. The request outcome is retained for retries.
 
 ## Local sample data
 
@@ -79,5 +86,7 @@ These routes require Admin and are disabled in production. Workflow identifiers 
 
 - [Documentation index](README.md)
 - [Operations desk](operations.md)
+- [Business terms](business-terms.md)
+- [Verification](verification.md)
 - [Architecture](architecture.md)
 - [Development setup](../CONTRIBUTING.md)
