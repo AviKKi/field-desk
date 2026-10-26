@@ -7,7 +7,6 @@ import {
   LogOut,
   Menu,
   ShieldCheck,
-  Database,
   X,
   ChevronRight,
 } from 'lucide-react';
@@ -35,10 +34,8 @@ export function AppShell() {
   const [error, setError] = useState('');
   const title = location.pathname.startsWith('/users')
     ? 'Team members'
-    : location.pathname.startsWith('/settings')
-      ? 'Settings'
-      : (navigation.find((item) => location.pathname.startsWith(item.to))
-          ?.label ?? 'CRM');
+    : (navigation.find((item) => location.pathname.startsWith(item.to))
+        ?.label ?? 'CRM');
   const initials = user.name
     .split(' ')
     .map((part) => part[0])
@@ -47,10 +44,7 @@ export function AppShell() {
   const links = [
     ...navigation,
     ...(user.role === 'ADMIN'
-      ? [
-          { to: '/users', label: 'Team members', icon: ShieldCheck },
-          { to: '/settings/sample-data', label: 'Sample data', icon: Database },
-        ]
+      ? [{ to: '/users', label: 'Team members', icon: ShieldCheck }]
       : []),
   ];
   async function logout() {

@@ -52,11 +52,6 @@ const AccountsPage = lazy(() =>
     default: module.AccountsPage,
   })),
 );
-const SampleDataPage = lazy(() =>
-  import('@/pages/sample-data-page').then((module) => ({
-    default: module.SampleDataPage,
-  })),
-);
 const UsersPage = lazy(() =>
   import('@/pages/users-page').then((module) => ({
     default: module.UsersPage,
@@ -98,20 +93,6 @@ function RequireRole({
         <Link to="/">Back to overview</Link>
       </Button>
     </div>
-  );
-}
-function HomeRedirect() {
-  const location = useLocation();
-  const runId = new URLSearchParams(location.search).get('workflow');
-  return (
-    <Navigate
-      to={
-        runId
-          ? `/settings/sample-data?workflow=${encodeURIComponent(runId)}`
-          : '/customers'
-      }
-      replace
-    />
   );
 }
 export function App() {
@@ -157,7 +138,7 @@ export function App() {
                 </CrmProvider>
               }
             >
-              <Route index element={<HomeRedirect />} />
+              <Route index element={<Navigate to="/customers" replace />} />
               <Route path="customers" element={<CustomersPage />} />
               <Route path="customers/new" element={<CustomerFormPage />} />
               <Route path="customers/:id" element={<CustomerDetailPage />} />
@@ -167,14 +148,6 @@ export function App() {
               <Route path="orders/:id" element={<OrderDetailPage />} />
               <Route path="orders/:id/edit" element={<OrderFormPage />} />
               <Route path="accounts" element={<AccountsPage />} />
-              <Route
-                path="settings/sample-data"
-                element={
-                  <RequireRole area="users">
-                    <SampleDataPage />
-                  </RequireRole>
-                }
-              />
               <Route
                 path="users"
                 element={
