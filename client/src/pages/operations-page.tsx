@@ -25,6 +25,9 @@ import type {
   OrderDetail,
   ScenarioReport,
   SavedWorkflow,
+  CustomerSnapshot,
+  AccountReview,
+  EventRow,
 } from '@crm/shared/crm';
 import type { Role } from '@crm/shared';
 import { ROLE_LABELS } from '@crm/shared/roles';
@@ -219,6 +222,8 @@ export function OperationsPage() {
   const [summary, setSummary] = useState<CustomerSummary | null>(null);
   const [detail, setDetail] = useState<OrderDetail | null>(null);
   const [ledger, setLedger] = useState<LedgerView | null>(null);
+  const [review, setReview] = useState<AccountReview | null>(null);
+  const [timeline, setTimeline] = useState<EventRow[]>([]);
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState('');
   const [saving, setPending] = useState(false);
@@ -314,22 +319,23 @@ export function OperationsPage() {
     if (!customerId) {
       setSummary(null);
       setLedger(null);
+      setReview(null);
+      setTimeline([]);
       return;
     }
     const controller = new AbortController();
     setSummary(null);
     setLedger(null);
-    void Promise.all([
-      api<CustomerSummary>(`/crm/customers/${customerId}/summary`, {
-        signal: controller.signal,
-      }),
-      api<LedgerView>(`/crm/customers/${customerId}/ledger`, {
-        signal: controller.signal,
-      }),
-    ])
-      .then(([value, entries]) => {
-        setSummary(value);
-        setLedger(entries);
+    setReview(null);
+    setTimeline([]);
+    void api<CustomerSnapshot>(`/crm/customers/${customerId}/snapshot`, {
+      signal: controller.signal,
+    })
+      .then((value) => {
+        setSummary(value.summary);
+        setLedger(value.ledger);
+        setReview(value.review);
+        setTimeline(value.timeline);
       })
       .catch((failure: unknown) => {
         if (!controller.signal.aborted) setError(errorMessage(failure));
@@ -1393,6 +1399,7 @@ export function OperationsPage() {
                     ['shipments', 'Shipments'],
                     ['account', 'Account activity'],
                     ['history', 'History'],
+                    ['checks', 'Account checks'],
                   ].map(([key, label]) => (
                     <Button
                       size="sm"
@@ -1427,6 +1434,7 @@ export function OperationsPage() {
                                 {[
                                   'SKU',
                                   'Ordered',
+                                  'Approved',
                                   'Shipped',
                                   'Delivered',
                                   'Returned',
@@ -1453,6 +1461,7 @@ export function OperationsPage() {
                                   </td>
                                   {[
                                     line.qty,
+                                    line.approved,
                                     line.dispatched,
                                     line.delivered,
                                     line.returned,
@@ -1544,6 +1553,35 @@ export function OperationsPage() {
                       ))}
                     </div>
                   )}
+                  {tab === 'checks' && review && (
+                    <div className="space-y-3">
+                      <p className="text-xs text-muted-foreground">
+                        Business terms {review.termsVersion} · Customer version{' '}
+                        {review.customerVersion} ·{' '}
+                        {new Date(review.checkedAt).toLocaleString()}
+                      </p>
+                      {review.checks.map((check) => (
+                        <details
+                          key={check.id}
+                          className="rounded-lg border p-3 text-xs"
+                        >
+                          <summary
+                            className={`cursor-pointer font-medium ${check.passed ? 'text-primary' : 'text-destructive'}`}
+                          >
+                            {check.passed ? 'Passed' : 'Failed'} · {check.label}
+                          </summary>
+                          <p className="mt-2 break-words text-muted-foreground">
+                            {check.details}
+                          </p>
+                          {check.references.length > 0 && (
+                            <p className="mt-2 break-all text-[10px] text-muted-foreground">
+                              {check.references.join(' · ')}
+                            </p>
+                          )}
+                        </details>
+                      ))}
+                    </div>
+                  )}
                   {tab === 'history' && (
                     <div className="space-y-5">
                       <h3 className="text-sm font-semibold">
@@ -1563,10 +1601,10 @@ export function OperationsPage() {
                         </details>
                       ))}
                       <h3 className="pt-2 text-sm font-semibold">
-                        Activity timeline
+                        Customer activity timeline
                       </h3>
-                      {detail?.timeline.length ? (
-                        detail.timeline.map((event) => (
+                      {timeline.length ? (
+                        timeline.map((event) => (
                           <button
                             className="flex w-full items-start gap-3 rounded-lg border p-3 text-left hover:bg-accent"
                             key={event.id}
@@ -1597,7 +1635,7 @@ export function OperationsPage() {
                         ))
                       ) : (
                         <p className="text-sm text-muted-foreground">
-                          No order activity yet.
+                          No customer activity yet.
                         </p>
                       )}
                     </div>
@@ -1654,6 +1692,21 @@ export function OperationsPage() {
                         </p>
                       </div>
                     ))}
+                    {result.termsVersion && (
+                      <p className="text-xs text-muted-foreground">
+                        Business terms {result.termsVersion}
+                      </p>
+                    )}
+                    {result.review && (
+                      <p className="text-xs text-primary">
+                        {
+                          result.review.checks.filter((check) => check.passed)
+                            .length
+                        }{' '}
+                        of {result.review.checks.length} account checks passed
+                        at customer version {result.review.customerVersion}.
+                      </p>
+                    )}
                     {result.trace.map((entry, index) => (
                       <p
                         key={index}
@@ -1666,9 +1719,27 @@ export function OperationsPage() {
                       <summary className="cursor-pointer font-medium">
                         Recorded changes · {result.effects.length}
                       </summary>
-                      <pre className="mt-3 max-h-96 overflow-auto text-[10px]">
-                        {JSON.stringify(result.effects, null, 2)}
-                      </pre>
+                      <div className="mt-3 max-h-96 space-y-2 overflow-auto">
+                        {result.effects.map((effect, index) => (
+                          <details
+                            key={index}
+                            className="rounded-md border p-3"
+                          >
+                            <summary className="cursor-pointer">
+                              {effect.operation} ·{' '}
+                              {effect.entity.replaceAll('_', ' ')}
+                            </summary>
+                            {effect.reason && (
+                              <p className="my-2 leading-relaxed">
+                                {effect.reason}
+                              </p>
+                            )}
+                            <pre className="overflow-auto text-[10px]">
+                              {JSON.stringify(effect, null, 2)}
+                            </pre>
+                          </details>
+                        ))}
+                      </div>
                     </details>
                     <div className="flex flex-wrap gap-2">
                       <Button

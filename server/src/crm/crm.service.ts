@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { sql } from 'drizzle-orm';
-import { SCENARIOS } from '@crm/shared/crm';
+import { BUSINESS_TERMS_VERSION, SCENARIOS } from '@crm/shared/crm';
 import type { SQL } from 'drizzle-orm';
 import type { User, Role } from '@crm/shared';
 import type {
@@ -29,6 +29,8 @@ import type {
   ScenarioReport,
   Sku,
   SavedWorkflow,
+  AccountReview,
+  CustomerSnapshot,
 } from '@crm/shared/crm';
 import { DatabaseService } from '../database/database.service.js';
 
@@ -53,6 +55,7 @@ interface Context {
   orderId?: string;
   effects: ActionResult['effects'];
   references: Record<string, string>;
+  command?: CrmCommand;
 }
 type Payload<T extends CrmCommand['type']> = Extract<
   CrmCommand,
@@ -134,6 +137,7 @@ export class CrmService {
         ? 'APPEND'
         : 'INSERT',
       after: row,
+      ...this.evidence(c, table, row),
     });
   }
   private change(c: Context, table: string, id: string, patch: Row) {
@@ -153,7 +157,124 @@ export class CrmService {
       operation: 'UPDATE',
       before,
       after: { ...before, ...patch },
+      ...this.evidence(c, table, { ...before, ...patch }),
     });
+  }
+  private evidence(c: Context, table: string, row: Row) {
+    const charge = row.charge_id
+      ? this.one<Row>(
+          sql`select * from receivable_entries where id=${row.charge_id}`,
+        )
+      : undefined;
+    const line = row.line_key
+      ? this.one<Line>(
+          sql`select * from order_lines where line_key=${row.line_key} order by rowid desc limit 1`,
+        )
+      : undefined;
+    const revision = row.revision_id
+      ? this.one<Row>(
+          sql`select * from order_revisions where id=${row.revision_id}`,
+        )
+      : undefined;
+    const orderId = String(
+      row.order_id ?? charge?.order_id ?? line?.order_id ?? c.orderId ?? '',
+    );
+    const order = orderId
+      ? this.one<Order>(sql`select * from orders where id=${orderId}`)
+      : undefined;
+    const shipmentLine = row.shipment_line_id
+      ? this.one<Row>(
+          sql`select * from shipment_lines where id=${row.shipment_line_id}`,
+        )
+      : undefined;
+    let reason = `${c.command?.type ?? 'REFERENCE_DATA'} records ${table.replaceAll('_', ' ')}.`;
+    if (table === 'receivable_entries') {
+      reason =
+        row.kind === 'RETURN'
+          ? `Returned goods reduce charge ${row.adjusts_id} by ${-Number(row.amount_paise)} paise; the original charge remains recorded.`
+          : row.kind === 'RETURN_FEE'
+            ? `Return ${row.source_id} incurs the recorded deduction of ${row.amount_paise} paise.`
+            : `Confirmed delivery ${row.source_id} recognizes ${row.amount_paise} paise for shipment line ${row.shipment_line_id}; unconfirmed units create no charge.`;
+    } else if (table === 'payment_allocations') {
+      reason =
+        Number(row.amount_paise) > 0
+          ? `${row.amount_paise} paise of receipt ${row.receipt_id} settles charge ${row.charge_id} in oldest-charge order. Only cash attribution qualifies for rewards.`
+          : `${-Number(row.amount_paise)} paise of receipt ${row.receipt_id} is released from reduced charge ${row.charge_id}.`;
+    } else if (table === 'reward_ledger') {
+      if (row.line_key) {
+        const line = this.one<Line>(
+          sql`select * from order_lines where line_key=${row.line_key} order by rowid desc limit 1`,
+        );
+        const cash = this.total(
+          sql`select coalesce(sum(p.amount_paise),0) n from payment_allocations p join receivable_entries e on e.id=p.charge_id where e.line_key=${row.line_key}`,
+        );
+        reason = `${row.points_delta} points adjust ${row.bucket} for line ${row.line_key}. Qualifying allocated cash is ${cash} paise; each charge earns floor(cash × ${line?.points_per_unit ?? 0} / ${line?.unit_price_paise ?? 1}), bounded by retained approved units. Credits and redeemed points do not earn points.`;
+      } else {
+        reason = `${row.points_delta} points adjust ${row.bucket} after ${c.command?.type ?? 'REFERENCE_DATA'}. Spent entitlement is retained as clawback pending when returned; later accrual offsets that debt.`;
+      }
+    } else if (table === 'credit_applications') {
+      reason = `${Number(row.amount_paise) < 0 ? 'Reverse' : 'Apply'} ${Math.abs(Number(row.amount_paise))} paise of credit ${row.credit_note_id} against charge ${row.charge_id}. This transfers credit without recording cash or earning points.`;
+    } else if (table === 'credit_refunds') {
+      reason = `${Number(row.amount_paise) < 0 ? 'Reverse recorded refund' : 'Record refund'} of ${Math.abs(Number(row.amount_paise))} paise from credit ${row.credit_note_id}, backed by receipt ${row.receipt_id}; bank reference ${row.reference}.`;
+    } else if (table === 'credit_notes') {
+      reason = `Reserve ${row.amount_paise} paise owed to the customer as explicit credit. Receipt funding is retained; application or refund requires Accounts action.`;
+    } else if (table === 'credit_funds') {
+      reason = `Reserve ${row.amount_paise} paise of receipt ${row.receipt_id} for credit ${row.credit_note_id}, preventing reuse as unapplied cash.`;
+    } else if (table === 'payment_receipts') {
+      reason = `Receive ${row.amount_paise} paise against customer ${row.customer_id}, reference ${row.reference}. No order is selected at capture.`;
+    } else if (table === 'cancellations') {
+      reason = `Cancel ${row.qty} unshipped units of line ${row.line_key}; dispatched and delivered quantities remain historical facts.`;
+    } else if (table === 'deliveries') {
+      reason = `Confirm ${row.qty} delivered units on shipment line ${row.shipment_line_id}; each confirmation creates one incremental goods charge.`;
+    } else if (table === 'approvals') {
+      reason = `${row.decision} applies specifically to commercial revision ${row.revision}.`;
+    } else if (table === 'shipments') {
+      reason =
+        row.status === 'VOIDED'
+          ? 'Void the pending loading document after a commercial change or cancellation; dispatched history is retained.'
+          : `Record ${row.status} for revision ${row.revision}${row.original_shipment_id ? ` as a supplement to dispatch ${row.original_shipment_id}` : ''}.`;
+    } else if (table === 'corrections') {
+      reason = `Append the authorized physical correction from revision ${row.original_revision} to ${row.new_revision}; evidence: ${row.evidence}; authorization: ${row.authorization_reference}.`;
+    }
+    const suppliedReason =
+      c.command && 'reason' in c.command.payload
+        ? c.command.payload.reason
+        : undefined;
+    if (suppliedReason) reason += ` Reason: ${suppliedReason}`;
+    return {
+      reason,
+      sourceReference: String(
+        row.reversal_of_id ??
+          row.adjusts_id ??
+          row.source_id ??
+          row.return_id ??
+          row.receipt_id ??
+          row.shipment_line_id ??
+          row.revision_id ??
+          c.id,
+      ),
+      provenance: {
+        actionId: c.id,
+        actorId: c.actor.id,
+        requestedBy: c.requester.id,
+        ...(order
+          ? {
+              orderId: order.id,
+              revision: Number(
+                row.revision ?? revision?.revision ?? order.current_revision,
+              ),
+            }
+          : {}),
+        ...(row.shipment_id || shipmentLine || table === 'shipments'
+          ? {
+              shipmentId: String(
+                row.shipment_id ?? shipmentLine?.shipment_id ?? row.id,
+              ),
+            }
+          : {}),
+        ...(row.line_key ? { lineKey: String(row.line_key) } : {}),
+      },
+    };
   }
   private authorize(c: Context, ...roles: Role[]) {
     if (!roles.includes(c.actor.role))
@@ -231,6 +352,7 @@ export class CrmService {
             trace: [],
             aggregateVersions: {},
             references: {},
+            termsVersion: BUSINESS_TERMS_VERSION,
           };
         }
         const c: Context = {
@@ -241,6 +363,7 @@ export class CrmService {
           customerId: '',
           effects: [],
           references: {},
+          command: envelope.command,
         };
         const result: ActionResult = {
           status: 'APPLIED',
@@ -251,6 +374,7 @@ export class CrmService {
           trace: [],
           aggregateVersions: {},
           references: c.references,
+          termsVersion: BUSINESS_TERMS_VERSION,
         };
         try {
           this.database.db.transaction(() => {
@@ -275,6 +399,10 @@ export class CrmService {
                 'VERSION_CONFLICT',
                 'The record changed. Refresh and try again.',
               );
+            result.trace.push({
+              stage: 'request',
+              explanation: `${actor.name} (${actor.role}) requested ${envelope.command.type} against version ${aggregate.version}. Business terms ${BUSINESS_TERMS_VERSION}.`,
+            });
             switch (envelope.command.type) {
               case 'PUNCH_ORDER':
                 this.punch(c, envelope.command.payload);
@@ -334,12 +462,15 @@ export class CrmService {
                 this.correct(c, envelope.command.payload);
                 break;
             }
-            this.database.db.run(
-              sql`update customers set version=version+1 where id=${c.customerId}`,
-            );
-            this.database.db.run(
-              sql`update orders set version=version+1 where customer_id=${c.customerId}`,
-            );
+            this.change(c, 'customers', c.customerId, {
+              version: this.summary(c.customerId).customer.version + 1,
+            });
+            for (const order of this.all<Order>(
+              sql`select * from orders where customer_id=${c.customerId}`,
+            ))
+              this.change(c, 'orders', order.id, {
+                version: order.version + 1,
+              });
             result.aggregateVersions[c.customerId] = this.one<Customer>(
               sql`select * from customers where id=${c.customerId}`,
             )!.version;
@@ -359,6 +490,23 @@ export class CrmService {
               payload: JSON.stringify(envelope.command.payload),
               occurred_at: c.now,
             });
+            result.review = this.review(c.customerId);
+            const failedChecks = result.review.checks.filter(
+              (check) => !check.passed,
+            );
+            if (failedChecks.length)
+              fail(
+                'ACCOUNT_INCONSISTENT',
+                failedChecks.map((check) => check.label).join('; '),
+              );
+            result.trace.push(
+              ...c.effects
+                .filter((effect) => effect.reason)
+                .map((effect) => ({
+                  stage: effect.entity,
+                  explanation: effect.reason!,
+                })),
+            );
             result.trace.push({
               stage: 'completed',
               explanation: `${envelope.command.type} completed by ${actor.name}. ${c.effects.length} records written.`,
@@ -368,6 +516,8 @@ export class CrmService {
           c.effects.length = 0;
           result.aggregateVersions = {};
           result.references = {};
+          result.review = undefined;
+          result.trace = [];
           if (error instanceof Decision) {
             result.status = 'NEEDS_DECISION';
             result.decisions = error.decisions;
@@ -2487,6 +2637,11 @@ export class CrmService {
         code: sku.code,
         name: sku.name,
         qty: line.qty,
+        approved: this.total(
+          sql`select count(*) n from approvals where order_id=${order.id} and revision=${order.current_revision} and decision='APPROVED'`,
+        )
+          ? line.qty
+          : 0,
         unitPricePaise: line.unit_price_paise,
         canceled,
         loaded,
@@ -2648,6 +2803,306 @@ export class CrmService {
         ),
       },
     };
+  }
+
+  review(customerId: string): AccountReview {
+    const summary = this.summary(customerId);
+    const checks: AccountReview['checks'] = [];
+    const check = (
+      id: string,
+      label: string,
+      passed: boolean,
+      details: string,
+      references: string[] = [],
+    ) => checks.push({ id, label, passed, details, references });
+    let entitlement = 0;
+    for (const order of this.all<Order>(
+      sql`select * from orders where customer_id=${customerId} order by rowid`,
+    )) {
+      const detail = this.detail(order.id);
+      const approved = detail.approvals.some(
+        (approval) =>
+          approval.revision === order.current_revision &&
+          approval.decision === 'APPROVED',
+      );
+      check(
+        `approval:${order.id}`,
+        'Commercial approval matches the active revision',
+        order.status !== 'APPROVED' || approved,
+        `Order ${order.number}, revision ${order.current_revision}, status ${order.status}.`,
+        [order.id],
+      );
+      for (const line of detail.lines) {
+        check(
+          `quantities:${line.lineKey}`,
+          `${line.code} quantities remain within the commercial commitment`,
+          [
+            line.qty,
+            line.canceled,
+            line.dispatched,
+            line.delivered,
+            line.returned,
+            line.loaded,
+            line.open,
+          ].every((qty) => Number.isSafeInteger(qty) && qty >= 0) &&
+            line.qty === line.canceled + line.dispatched + line.open &&
+            line.returned <= line.delivered &&
+            line.delivered <= line.dispatched &&
+            line.loaded <= line.open,
+          `Ordered ${line.qty}; canceled ${line.canceled}; dispatched ${line.dispatched}; delivered ${line.delivered}; returned ${line.returned}; loading ${line.loaded}; open ${line.open}.`,
+          [order.id, line.lineKey],
+        );
+        if (order.status === 'APPROVED') {
+          const commercial = this.lines(order).find(
+            (row) => row.line_key === line.lineKey,
+          )!;
+          entitlement = safe(
+            entitlement +
+              (line.qty - line.canceled - line.returned) *
+                commercial.points_per_unit,
+          );
+          let earned = 0;
+          for (const charge of this.all<Charge>(
+            sql`select * from receivable_entries where line_key=${line.lineKey} and amount_paise>0`,
+          )) {
+            const cash = this.total(
+              sql`select coalesce(sum(amount_paise),0) n from payment_allocations where charge_id=${charge.id}`,
+            );
+            earned = safe(
+              earned +
+                Number(
+                  (BigInt(cash) * BigInt(commercial.points_per_unit)) /
+                    BigInt(commercial.unit_price_paise),
+                ),
+            );
+          }
+          const retained = safe(
+            (line.qty - line.canceled - line.returned) *
+              commercial.points_per_unit,
+          );
+          earned = Math.min(retained, earned);
+          const recordedEarned = this.total(
+            sql`select coalesce(sum(points_delta),0) n from reward_ledger where line_key=${line.lineKey} and bucket='AVAILABLE'`,
+          );
+          const recordedLocked = this.total(
+            sql`select coalesce(sum(points_delta),0) n from reward_ledger where line_key=${line.lineKey} and bucket='LOCKED'`,
+          );
+          check(
+            `reward-accrual:${line.lineKey}`,
+            `${line.code} awards follow qualifying cash and retained units`,
+            recordedEarned === earned && recordedLocked === retained - earned,
+            `Cash-earned ${earned}; recorded line accrual ${recordedEarned}; locked ${recordedLocked}; retained entitlement ${retained} points.`,
+            [order.id, line.lineKey],
+          );
+        }
+      }
+      for (const shipment of detail.shipments) {
+        if (shipment.status === 'VOIDED') continue;
+        const approval = detail.approvals.some(
+          (row) =>
+            row.revision === shipment.revision && row.decision === 'APPROVED',
+        );
+        check(
+          `shipment:${shipment.id}`,
+          'Shipment uses an approved commercial revision',
+          approval &&
+            (shipment.status !== 'LOADING' ||
+              shipment.revision === order.current_revision),
+          `Shipment ${shipment.id}, revision ${shipment.revision}, status ${shipment.status}.`,
+          [order.id, shipment.id],
+        );
+        for (const line of shipment.lines) {
+          check(
+            `shipment-quantities:${line.id}`,
+            'Shipment delivery and returns stay within dispatched units',
+            line.returned >= 0 &&
+              line.returned <= line.delivered &&
+              line.delivered <= line.dispatched_qty &&
+              line.dispatched_qty <= line.loaded_qty,
+            `Loaded ${line.loaded_qty}; dispatched ${line.dispatched_qty}; delivered ${line.delivered}; returned ${line.returned}.`,
+            [shipment.id, line.id],
+          );
+        }
+      }
+    }
+    const deliveries = this.all<{
+      id: string;
+      qty: number;
+      unit_price_paise: number;
+    }>(
+      sql`select d.id,d.qty,l.unit_price_paise from deliveries d join shipment_lines l on l.id=d.shipment_line_id join orders o on o.id=d.order_id where o.customer_id=${customerId}`,
+    );
+    for (const delivery of deliveries) {
+      const charges = this.all<{ amount_paise: number }>(
+        sql`select amount_paise from receivable_entries where source_id=${delivery.id} and kind in ('DELIVERY','CORRECTION')`,
+      );
+      check(
+        `delivery-charge:${delivery.id}`,
+        'Confirmed delivery has exactly one matching goods charge',
+        charges.length === 1 &&
+          charges[0]!.amount_paise ===
+            safe(delivery.qty * delivery.unit_price_paise),
+        `${delivery.qty} × ${delivery.unit_price_paise} paise; ${charges.length} charge(s).`,
+        [delivery.id],
+      );
+    }
+    const deliveredValue = safe(
+      deliveries.reduce((sum, row) => sum + row.qty * row.unit_price_paise, 0),
+    );
+    const returnedValue = this.total(
+      sql`select coalesce(sum(gross_paise),0) n from returns where customer_id=${customerId}`,
+    );
+    const fees = this.total(
+      sql`select coalesce(sum(fee_paise),0) n from returns where customer_id=${customerId}`,
+    );
+    const posted = this.total(
+      sql`select coalesce(sum(amount_paise),0) n from receivable_entries where customer_id=${customerId}`,
+    );
+    check(
+      'recognized-value',
+      'Charges equal confirmed goods less returns plus fees',
+      posted === safe(deliveredValue - returnedValue + fees),
+      `Posted ${posted}; delivered ${deliveredValue}; returned ${returnedValue}; fees ${fees} paise.`,
+    );
+    for (const charge of summary.charges) {
+      const credit = this.total(
+        sql`select coalesce(sum(amount_paise),0) n from credit_applications where charge_id=${charge.id}`,
+      );
+      const redeemed = this.total(
+        sql`select coalesce(sum(points),0) n from reward_redemptions where charge_id=${charge.id}`,
+      );
+      check(
+        `settlement:${charge.id}`,
+        'Charge settlements are nonnegative and within retained value',
+        [
+          charge.remainingPaise,
+          charge.cashPaidPaise,
+          credit,
+          redeemed,
+          charge.outstandingPaise,
+        ].every((amount) => Number.isSafeInteger(amount) && amount >= 0),
+        `Retained ${charge.remainingPaise}; cash ${charge.cashPaidPaise}; credit ${credit}; redeemed ${redeemed}; due ${charge.outstandingPaise} paise.`,
+        [charge.id],
+      );
+    }
+    for (const receipt of this.all<{ id: string; amount_paise: number }>(
+      sql`select * from payment_receipts where customer_id=${customerId}`,
+    )) {
+      const allocated = this.total(
+        sql`select coalesce(sum(amount_paise),0) n from payment_allocations where receipt_id=${receipt.id}`,
+      );
+      const reserved = this.total(
+        sql`select coalesce(sum(amount_paise),0) n from credit_funds where receipt_id=${receipt.id}`,
+      );
+      const invalidPairs = this.total(
+        sql`select count(*) n from (select sum(amount_paise) amount from payment_allocations where receipt_id=${receipt.id} group by charge_id having amount<0)`,
+      );
+      check(
+        `cash:${receipt.id}`,
+        'Receipt cash is allocated or reserved at most once',
+        allocated >= 0 &&
+          reserved >= 0 &&
+          allocated + reserved <= receipt.amount_paise &&
+          invalidPairs === 0,
+        `Received ${receipt.amount_paise}; allocated ${allocated}; reserved ${reserved} paise.`,
+        [receipt.id],
+      );
+    }
+    for (const credit of summary.credits) {
+      const funding = this.total(
+        sql`select coalesce(sum(amount_paise),0) n from credit_funds where credit_note_id=${credit.id}`,
+      );
+      const invalidApplications = this.total(
+        sql`select count(*) n from (select sum(amount_paise) amount from credit_applications where credit_note_id=${credit.id} group by charge_id having amount<0)`,
+      );
+      const invalidRefunds = this.total(
+        sql`select count(*) n from (select r.receipt_id,sum(r.amount_paise) amount from credit_refunds r where r.credit_note_id=${credit.id} group by r.receipt_id having amount<0 or amount>(select coalesce(sum(f.amount_paise),0) from credit_funds f where f.credit_note_id=${credit.id} and f.receipt_id=r.receipt_id))`,
+      );
+      check(
+        `credit:${credit.id}`,
+        'Credit remains funded and within application and refund limits',
+        funding === credit.amount_paise &&
+          credit.availablePaise >= 0 &&
+          credit.appliedPaise >= 0 &&
+          credit.refundedPaise >= 0 &&
+          invalidApplications === 0 &&
+          invalidRefunds === 0,
+        `Issued ${credit.amount_paise}; funded ${funding}; applied ${credit.appliedPaise}; refunded ${credit.refundedPaise}; open ${credit.availablePaise} paise.`,
+        [credit.id],
+      );
+    }
+    const points = summary.points;
+    const actualEntitlement = safe(
+      points.locked +
+        points.available +
+        points.redeemed -
+        points.clawbackPending,
+    );
+    check(
+      'reward-conservation',
+      'Reward buckets conserve retained approved entitlement',
+      Object.values(points).every(
+        (value) => Number.isSafeInteger(value) && value >= 0,
+      ) &&
+        actualEntitlement === entitlement &&
+        !(points.available > 0 && points.clawbackPending > 0),
+      `Entitlement ${entitlement}; locked + available + redeemed − clawback pending = ${actualEntitlement} points.`,
+    );
+    const redeemed = this.total(
+      sql`select coalesce(sum(points),0) n from reward_redemptions where customer_id=${customerId}`,
+    );
+    check(
+      'redemption-evidence',
+      'Redeemed bucket matches settlement evidence',
+      redeemed === points.redeemed,
+      `Recorded settlements ${redeemed}; redeemed bucket ${points.redeemed} points.`,
+    );
+    check(
+      'account-position',
+      'Account position matches open charges, cash, and credits',
+      summary.netBalancePaise ===
+        safe(
+          summary.outstandingPaise -
+            summary.unappliedCashPaise -
+            summary.creditsOpenPaise,
+        ),
+      `Net ${summary.netBalancePaise} = due ${summary.outstandingPaise} − unapplied cash ${summary.unappliedCashPaise} − open credit ${summary.creditsOpenPaise} paise.`,
+    );
+    const duplicateEvents = this.total(
+      sql`select count(*) n from (select action_id from business_events where customer_id=${customerId} group by action_id having count(*)>1)`,
+    );
+    check(
+      'activity-uniqueness',
+      'Applied activities have one audit event',
+      duplicateEvents === 0,
+      `${duplicateEvents} duplicate activity event(s).`,
+    );
+    return {
+      customerId,
+      customerVersion: summary.customer.version,
+      termsVersion: BUSINESS_TERMS_VERSION,
+      checkedAt: new Date().toISOString(),
+      checks,
+    };
+  }
+
+  customerTimeline(customerId: string): EventRow[] {
+    this.summary(customerId);
+    return this.all<EventRow>(
+      sql`select * from business_events where customer_id=${customerId} order by rowid`,
+    );
+  }
+
+  snapshot(customerId: string): CustomerSnapshot {
+    return this.database.db.transaction(() => ({
+      summary: this.summary(customerId),
+      orders: this.all<Order>(
+        sql`select * from orders where customer_id=${customerId} order by rowid`,
+      ).map((order) => this.detail(order.id)),
+      ledger: this.ledger(customerId),
+      timeline: this.customerTimeline(customerId),
+      review: this.review(customerId),
+    }));
   }
 
   ledger(customerId: string): LedgerView {

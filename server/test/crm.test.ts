@@ -1186,4 +1186,77 @@ describe('CRM operations', { concurrency: false }, () => {
     );
     assert.equal(crm.detail(id).order.status, 'CANCELLED');
   });
+  it('records causal posting evidence, snapshots, and checks without replaying activities', () => {
+    const report = crm.scenario('paid-return', admin);
+    const customerId = report.customerId;
+    const last = report.steps.at(-1)!.result;
+    assert.equal(last.termsVersion, '2026-10-26.1');
+    assert.ok(last.review!.checks.every((check) => check.passed));
+    for (const effect of last.effects) {
+      assert.ok(effect.reason && effect.sourceReference);
+      assert.equal(effect.provenance!.actionId, last.actionId);
+      assert.equal(effect.provenance!.requestedBy, admin.id);
+    }
+    const adjustment = last.effects.find(
+      (effect) => effect.entity === 'receivable_entries',
+    )!;
+    assert.match(adjustment.reason!, /reduce charge/);
+    assert.ok(adjustment.provenance!.revision);
+    const version = crm.summary(customerId).customer.version;
+    const ledger = crm.ledger(customerId);
+    const snapshot = crm.snapshot(customerId);
+    assert.equal(snapshot.summary.netBalancePaise, -8000);
+    assert.ok(
+      snapshot.timeline.some(
+        (event) => event.type === 'RECEIVE_CUSTOMER_PAYMENT',
+      ),
+    );
+    assert.ok(
+      snapshot.timeline.some((event) => event.type === 'RECORD_RETURN'),
+    );
+    assert.ok(snapshot.review.checks.every((check) => check.passed));
+    assert.deepEqual(crm.ledger(customerId), ledger);
+    assert.equal(crm.summary(customerId).customer.version, version);
+    assert.deepEqual(crm.trace(last.actionId, admin), last);
+  });
+
+  it('reports inconsistent evidence and rolls back a subsequent activity atomically', () => {
+    const report = crm.scenario('customer-payment', admin);
+    const customerId = report.customerId;
+    const charge = crm.summary(customerId).charges[0]!;
+    const stop = new Error('Rollback the deliberately altered test record');
+    assert.throws(
+      () =>
+        database.db.transaction(() => {
+          database.db.run(
+            sql`update receivable_entries set amount_paise=amount_paise+1 where id=${charge.id}`,
+          );
+          assert.ok(
+            crm
+              .review(customerId)
+              .checks.some(
+                (check) => !check.passed && check.id === 'recognized-value',
+              ),
+          );
+          const before = crm.ledger(customerId);
+          const summary = crm.summary(customerId);
+          const result = run({
+            type: 'RECEIVE_CUSTOMER_PAYMENT',
+            payload: {
+              customerId,
+              amountPaise: 1,
+              reference: 'Must roll back',
+            },
+          });
+          assert.equal(result.errors[0]?.code, 'ACCOUNT_INCONSISTENT');
+          assert.deepEqual(result.effects, []);
+          assert.deepEqual(result.references, {});
+          assert.deepEqual(crm.ledger(customerId), before);
+          assert.deepEqual(crm.summary(customerId), summary);
+          throw stop;
+        }),
+      (error) => error === stop,
+    );
+    assert.ok(crm.review(customerId).checks.every((check) => check.passed));
+  });
 });

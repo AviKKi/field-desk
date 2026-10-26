@@ -78,6 +78,18 @@ export class CrmController {
   ledger(@Param('id') id: string) {
     return this.crm.ledger(id);
   }
+  @Get('customers/:id/review')
+  review(@Param('id') id: string) {
+    return this.crm.review(id);
+  }
+  @Get('customers/:id/snapshot')
+  snapshot(@Param('id') id: string) {
+    return this.crm.snapshot(id);
+  }
+  @Get('customers/:id/timeline')
+  customerTimeline(@Param('id') id: string) {
+    return this.crm.customerTimeline(id);
+  }
   @Post('customers')
   customer(
     @Body(new ZodValidationPipe(customerSchema))

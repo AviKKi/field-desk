@@ -131,6 +131,28 @@ export const actionEnvelopeSchema = z
 export type CrmCommand = z.infer<typeof crmActionSchema>;
 export type ActionEnvelope = z.infer<typeof actionEnvelopeSchema>;
 export type CommandType = CrmCommand['type'];
+export const BUSINESS_TERMS_VERSION = '2026-10-26.1';
+export interface AccountCheck {
+  id: string;
+  label: string;
+  passed: boolean;
+  details: string;
+  references: string[];
+}
+export interface AccountReview {
+  customerId: string;
+  customerVersion: number;
+  termsVersion: string;
+  checkedAt: string;
+  checks: AccountCheck[];
+}
+export interface CustomerSnapshot {
+  summary: CustomerSummary;
+  orders: OrderDetail[];
+  ledger: LedgerView;
+  timeline: EventRow[];
+  review: AccountReview;
+}
 export interface ActionResult {
   status: 'APPLIED' | 'REJECTED' | 'NEEDS_DECISION' | 'CONFLICT';
   actionId: string;
@@ -145,10 +167,23 @@ export interface ActionResult {
     operation: 'INSERT' | 'UPDATE' | 'APPEND';
     before?: unknown;
     after?: unknown;
+    reason?: string;
+    sourceReference?: string;
+    provenance?: {
+      actionId: string;
+      actorId: string;
+      requestedBy: string;
+      orderId?: string;
+      revision?: number;
+      shipmentId?: string;
+      lineKey?: string;
+    };
   }>;
   trace: Array<{ stage: string; explanation: string }>;
   aggregateVersions: Record<string, number>;
   references: Record<string, string>;
+  termsVersion?: string;
+  review?: AccountReview;
 }
 export interface Customer {
   id: string;
@@ -178,6 +213,7 @@ export interface OrderLine {
   code: string;
   name: string;
   qty: number;
+  approved: number;
   unitPricePaise: number;
   canceled: number;
   loaded: number;
