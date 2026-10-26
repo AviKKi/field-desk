@@ -2636,7 +2636,7 @@ export class CrmService {
       customers: this.all<Customer>(sql`select * from customers order by name`),
       skus: this.all<Sku>(sql`select * from skus order by code`),
       orders: this.all<OrderListRow>(
-        sql`select * from orders order by created_at desc,rowid desc`,
+        sql`select o.*, (select coalesce(sum(l.qty*l.unit_price_paise),0) from order_lines l join order_revisions r on r.id=l.revision_id where r.order_id=o.id and r.revision=o.current_revision) totalPaise from orders o order by o.created_at desc,o.rowid desc`,
       ),
       actors,
     };

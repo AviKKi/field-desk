@@ -1313,6 +1313,14 @@ describe('CRM operations', { concurrency: false }, () => {
       .send({ email: admin.email, password: 'operations-test-password' })
       .expect(200);
     const cookies = login.headers['set-cookie'] as unknown as string[];
+    for (const order of crm.bootstrap(admin).orders) {
+      assert.equal(
+        order.totalPaise,
+        crm
+          .detail(order.id)
+          .lines.reduce((sum, line) => sum + line.qty * line.unitPricePaise, 0),
+      );
+    }
     const response = await request(app.getHttpServer())
       .get('/api/crm/accounts')
       .set('Cookie', cookies[0]!.split(';')[0]!)

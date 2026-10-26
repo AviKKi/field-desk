@@ -293,7 +293,17 @@ export function Tabs({
 export function OrdersTable({ orders }: { orders: OrderListRow[] }) {
   const { data } = useCrm();
   return (
-    <Table columns={['Order', 'Customer', 'Date', 'Status', 'Revision', '']}>
+    <Table
+      columns={[
+        'Order',
+        'Customer',
+        'Date',
+        'Order value',
+        'Status',
+        'Revision',
+        '',
+      ]}
+    >
       {orders.map((order) => (
         <tr key={order.id}>
           <td>
@@ -314,6 +324,14 @@ export function OrdersTable({ orders }: { orders: OrderListRow[] }) {
             </Link>
           </td>
           <td>{date(order.created_at)}</td>
+          <td className="whitespace-nowrap tabular-nums">
+            {(() => {
+              const total =
+                order.totalPaise ??
+                data?.orders.find((row) => row.id === order.id)?.totalPaise;
+              return total === undefined ? '—' : money(total);
+            })()}
+          </td>
           <td>
             <Status value={order.status} />
           </td>

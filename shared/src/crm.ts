@@ -218,6 +218,7 @@ export interface OrderListRow {
   current_revision: number;
   version: number;
   created_at: string;
+  totalPaise?: number;
 }
 export interface OrderLine {
   lineKey: string;
