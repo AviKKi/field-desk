@@ -70,23 +70,6 @@ The exact payload schemas and response types are exported by `@crm/shared/crm`. 
 
 Action responses contain `status`, `actionId`, `errors`, `decisions`, `effects`, `trace`, `aggregateVersions`, and document `references`. New results include `termsVersion` and, for applied activities, a `review` with `customerId`, `customerVersion`, `termsVersion`, `checkedAt`, and checks (`id`, `label`, `passed`, `details`, `references`). Each effect includes a reason, source reference, and provenance identifying its action, acting staff member, requester, and applicable commercial/shipment references. Older saved activities retain their original envelope without these newer optional fields. Status is `APPLIED`, `REJECTED`, `NEEDS_DECISION`, or `CONFLICT`. Domain outcomes use this envelope; malformed requests return 400 and authentication or impersonation failures use 401/403. No domain records are committed on rejected or unresolved actions. The request outcome is retained for retries.
 
-## Local development utilities
-
-| Method | Route                    | Purpose                                                               |
-| ------ | ------------------------ | --------------------------------------------------------------------- |
-| POST   | `/crm/seed`              | Add catalog, customers, and staff desks without deleting transactions |
-| POST   | `/crm/reset`             | Reset with `{ "confirmation": "RESET CRM DATA" }`                     |
-| POST   | `/crm/scenarios/:id/run` | Run a complete sample workflow                                        |
-| GET    | `/crm/samples`           | List the current administrator’s most recent 50 saved workflows       |
-| GET    | `/crm/samples/:id`       | Read a saved workflow without executing activities                    |
-| POST   | `/crm/samples`           | Start `{ "scenarioId": "partial-delivery" }`                          |
-| POST   | `/crm/samples/:id/step`  | Advance the saved workflow by one activity                            |
-| POST   | `/crm/samples/:id/run`   | Complete the saved workflow                                           |
-
-The CRM has no sample-data screen. Populate local customer histories with the command described in [development setup](../CONTRIBUTING.md#local-dataset). The `/crm/seed` HTTP utility loads reference data only; the CLI command creates the complete dataset.
-
-These routes require Admin and are disabled in production. Workflow identifiers are exported as `SCENARIOS` in the shared package. Each saved workflow belongs to its initiating administrator.
-
 ## Related
 
 - [Documentation index](README.md)

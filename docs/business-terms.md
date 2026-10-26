@@ -32,8 +32,6 @@ Neither operation edits the original entry or deletes its audit history. Use a f
 
 Warehouse and Admin submit physical returns. Sales and Admin cancel eligible quantities. KAM and Admin approve or reject exact revisions. Accounts and Admin receive money, reserve and settle credits, record refunds, and reverse settlements. Sales and Accounts may redeem customer points; Admin may do so directly. Other authenticated roles can inspect customer records but cannot grant themselves action permissions.
 
-The local reset is a separate development control, requires explicit confirmation and Admin, and is disabled in production. It is not a financial reversal operation.
-
 ## Balance checks
 
 The account position is:

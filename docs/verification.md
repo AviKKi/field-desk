@@ -4,7 +4,7 @@ Run `pnpm test`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` from the worksp
 
 ## Business acceptance
 
-The HTTP workflow suite defines its own requests and expected outcomes. It uses the public action and read contracts and the local catalog seed, with no call to the application's saved workflow runner or mutation providers. User creation and database migration are setup operations only. Source: `server/test/customer-workflows.test.ts` and its HTTP transport helper.
+The HTTP workflow suite defines its own requests and expected outcomes. It uses the public action and read contracts and the local catalog seed, with no call to mutation providers while exercising business operations. User creation and database migration are setup operations only. Source: `server/test/customer-workflows.test.ts` and its HTTP transport helper.
 
 | Case | Verified outcome                                                                                                         |
 | ---- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -25,11 +25,11 @@ The HTTP workflow suite defines its own requests and expected outcomes. It uses 
 
 Additional HTTP cases race credit applications and point redemptions. Two hundred deterministic sequences vary item quantities, prices, payment timing, partial confirmations, return timing and fees, selected cancellation, point settlement, refund/reversal, duplicate receipt submissions, and invalid excess quantities. Each sequence tracks expected quantities and the customer net position independently, checks point conservation, and verifies that previously recorded ledger entries remain unchanged.
 
-The service integration suite separately checks all saved workflows in whole and stepped execution, role boundaries and forged actors, exact paise and rounding, return reversals of credit/point settlement, partial settlement corrections, stale loading documents, preserved dispatched evidence, and restoring saved workflows without replay. An altered-record test proves account checks detect inconsistent evidence and roll back the next activity.
+The service integration suite uses test-only fixtures to check role boundaries and forged actors, exact paise and rounding, return reversals of credit/point settlement, partial settlement corrections, stale loading documents, and preserved dispatched evidence. It also verifies that the removed development runner, seed, and reset endpoints return 404 even for an authenticated administrator. An altered-record test proves account checks detect inconsistent evidence and roll back the next activity.
 
-`server/test/migrations.test.ts` migrates a populated database from the preceding schema. It verifies that existing credits, applications, refunds, and receipt funding survive the upgrade, that new reversal links are valid, and that reapplying migrations is safe. Authentication tests cover strict validation, session expiry/revocation, default-deny access, CSRF, credential throttling, and password handling.
+`server/test/migrations.test.ts` migrates a populated database from the preceding schema. It verifies that existing credits, applications, refunds, and receipt funding survive the upgrade, that new reversal links are valid, and that reapplying migrations is safe. It also starts with legacy workflow metadata and verifies that its tables are removed while customer transactions remain intact. Authentication tests cover strict validation, session expiry/revocation, default-deny access, CSRF, credential throttling, and password handling.
 
-The seed suite verifies all six commercial states and seven fulfillment states across the 24 seeded orders, checks customer balances and reward buckets, and verifies that no saved workflow runs are created. It also verifies reruns by another administrator, preservation of manual changes, rollback after a missing staff role, local reset followed by reseeding, and production/access restrictions.
+The seed suite verifies all six commercial states and seven fulfillment states across the 24 seeded orders, checks customer balances and reward buckets, and verifies that legacy workflow tables are absent. It also verifies reruns by another administrator, preservation of manual changes, rollback after a missing staff role, rebuilding an empty test database, and production/access restrictions.
 
 ## Recorded evidence
 

@@ -52,7 +52,7 @@ The dataset includes:
 
 The Sales orders table has separate **Approval** and **Fulfillment** columns and filters. Customer account tabs show the receipts, credit notes, refunds, rewards, and activity behind each balance.
 
-The seed is transactional and records completion only after all account checks pass. Running it again reports the existing dataset and preserves subsequent edits and transactions, including when another administrator runs the command. It does not reset customer data or create saved workflow runs. It refuses production use.
+The seed is transactional and records completion only after all account checks pass. Running it again reports the existing dataset and preserves subsequent edits and transactions, including when another administrator runs the command. Seeding runs only through the CLI and refuses production use.
 
 Staff desks have no published login passwords; use the existing admin's **Working as** selector or create staff accounts through Team members. The seed does not replace or promote existing user accounts.
 
