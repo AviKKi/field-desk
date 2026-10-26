@@ -34,14 +34,16 @@ export function OrdersPage() {
   const { data, actor } = useCrm();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
+  const [fulfillment, setFulfillment] = useState('');
   const orders = (data?.orders ?? []).filter(
     (row) =>
       (!status || row.status === status) &&
+      (!fulfillment || row.fulfillmentStatus === fulfillment) &&
       `${row.number} ${data?.customers.find((customer) => customer.id === row.customer_id)?.name}`
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
-  const page = useTablePage(orders, `${search}:${status}`);
+  const page = useTablePage(orders, `${search}:${status}:${fulfillment}`);
   return (
     <div className="space-y-6">
       <PageHeader
@@ -65,22 +67,49 @@ export function OrdersPage() {
               onChange={setSearch}
               placeholder="Search orders or customers…"
             />
-            <StatusFilter value={status} onChange={setStatus} />
+            <div className="flex flex-wrap gap-2">
+              <StatusFilter value={status} onChange={setStatus} />
+              <NativeSelect
+                aria-label="Filter by fulfillment"
+                value={fulfillment}
+                onChange={(event) => setFulfillment(event.target.value)}
+              >
+                <option value="">All fulfillment</option>
+                {[
+                  ['UNFULFILLED', 'Not started'],
+                  ['LOADING', 'Loading'],
+                  ['PARTIALLY_DISPATCHED', 'Partly dispatched'],
+                  ['DISPATCHED', 'Dispatched'],
+                  ['PARTIALLY_DELIVERED', 'Partly delivered'],
+                  ['DELIVERED', 'Delivered'],
+                  ['CANCELLED', 'Canceled'],
+                ].map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
           </div>
           {orders.length ? (
             <OrdersTable orders={page.rows} />
           ) : (
             <Empty
-              title={search || status ? 'No matching orders' : 'No orders yet'}
+              title={
+                search || status || fulfillment
+                  ? 'No matching orders'
+                  : 'No orders yet'
+              }
               description={
-                search || status
+                search || status || fulfillment
                   ? 'Try another search or status.'
                   : 'Choose a customer and add products to create a sales order.'
               }
             >
               {['ADMIN', 'SALES'].includes(actor.role) &&
                 !search &&
-                !status && (
+                !status &&
+                !fulfillment && (
                   <Button asChild>
                     <Link to="/orders/new">
                       <Plus />

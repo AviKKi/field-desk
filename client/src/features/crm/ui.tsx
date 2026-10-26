@@ -41,6 +41,9 @@ export function date(value: unknown) {
     : '—';
 }
 const labels: Record<string, string> = {
+  UNFULFILLED: 'Not started',
+  PARTIALLY_DISPATCHED: 'Partly dispatched',
+  PARTIALLY_DELIVERED: 'Partly delivered',
   DRAFT: 'Draft',
   PENDING: 'Pending approval',
   REAPPROVAL_REQUIRED: 'Needs reapproval',
@@ -299,7 +302,8 @@ export function OrdersTable({ orders }: { orders: OrderListRow[] }) {
         'Customer',
         'Date',
         'Order value',
-        'Status',
+        'Approval',
+        'Fulfillment',
         'Revision',
         '',
       ]}
@@ -334,6 +338,16 @@ export function OrdersTable({ orders }: { orders: OrderListRow[] }) {
           </td>
           <td>
             <Status value={order.status} />
+          </td>
+          <td>
+            <Status
+              value={
+                order.fulfillmentStatus ??
+                data?.orders.find((row) => row.id === order.id)
+                  ?.fulfillmentStatus ??
+                'UNFULFILLED'
+              }
+            />
           </td>
           <td>{order.current_revision}</td>
           <td className="text-right">
@@ -436,9 +450,15 @@ export function StatusFilter({
     >
       <option value="">All statuses</option>
       {Object.entries(labels)
-        .filter(
-          ([id]) =>
-            !['LOADING', 'DISPATCHED', 'DELIVERED', 'VOIDED'].includes(id),
+        .filter(([id]) =>
+          [
+            'DRAFT',
+            'PENDING',
+            'REAPPROVAL_REQUIRED',
+            'APPROVED',
+            'REJECTED',
+            'CANCELLED',
+          ].includes(id),
         )
         .map(([id, label]) => (
           <option key={id} value={id}>
