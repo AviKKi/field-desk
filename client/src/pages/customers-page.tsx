@@ -178,7 +178,7 @@ export function CustomerFormPage() {
   }
   if (!allowed)
     return <Empty title="You do not have permission to manage customers" />;
-  if (!data || (id && record.loading && !record.data)) return <Loading />;
+  if (!data || (id && !record.data && !record.error)) return <Loading />;
   if (id && record.error) return <ErrorNotice message={record.error} />;
   return (
     <div className="space-y-6">

@@ -53,7 +53,7 @@ export function ActivityDialog({
   entryId?: string;
   onClose: () => void;
 }) {
-  const { data } = useCrm();
+  const { data, refresh } = useCrm();
   const command = useCommand();
   const [error, setError] = useState('');
   const [physical, setPhysical] = useState('');
@@ -541,6 +541,11 @@ export function ActivityDialog({
             )}
             {(error || command.error) && (
               <ErrorNotice message={error || command.error} />
+            )}
+            {command.error && (
+              <Button variant="outline" onClick={refresh}>
+                Reload current record
+              </Button>
             )}
             <div className="flex justify-end gap-3 border-t pt-4">
               <Button

@@ -402,7 +402,10 @@ export function OrderDetailPage() {
           {...action}
           detail={detail}
           snapshot={account.data}
-          onClose={() => setAction(null)}
+          onClose={() => {
+            if (action.type === 'START_LOADING') setTab('shipments');
+            setAction(null);
+          }}
         />
       )}
     </div>

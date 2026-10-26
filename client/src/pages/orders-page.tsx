@@ -107,7 +107,7 @@ export function OrderFormPage() {
   const { id } = useParams();
   const record = useRecord<OrderDetail>(id ? `/crm/orders/${id}` : '');
   const { data, actor } = useCrm();
-  if (!data || (id && record.loading && !record.data))
+  if (!data || (id && !record.data && !record.error))
     return <Loading label="Loading order form…" />;
   if (id && record.error) return <ErrorNotice message={record.error} />;
   if (!['ADMIN', 'SALES'].includes(actor.role))

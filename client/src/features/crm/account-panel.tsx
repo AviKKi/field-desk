@@ -397,6 +397,35 @@ export function AccountPanel({
           )}
         </>
       )}
+      {!rewards && (
+        <details className="m-5 rounded-lg border p-4 text-sm">
+          <summary className="cursor-pointer font-medium">
+            Balance checks ·{' '}
+            {snapshot.review.checks.filter((check) => check.passed).length} of{' '}
+            {snapshot.review.checks.length} passed
+          </summary>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Checked at {new Date(snapshot.review.checkedAt).toLocaleString()} ·
+            Customer version {snapshot.review.customerVersion}
+          </p>
+          <ul className="mt-3 divide-y">
+            {snapshot.review.checks.map((check) => (
+              <li key={check.id} className="py-3">
+                <p
+                  className={
+                    check.passed ? 'text-emerald-700' : 'text-destructive'
+                  }
+                >
+                  {check.passed ? 'Passed' : 'Failed'} · {check.label}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {check.details}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {action && (
         <ActivityDialog
           {...action}

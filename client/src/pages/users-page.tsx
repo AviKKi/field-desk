@@ -215,14 +215,11 @@ export function UsersPage() {
     <div className="space-y-7">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="mb-2 text-[11px] font-medium tracking-[0.16em] text-muted-foreground uppercase">
-            People & access
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight">
-            Good work is a team effort.
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Team members
           </h1>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Manage the people who make it happen, and the access they need.
+          <p className="mt-1 text-sm text-muted-foreground">
+            Manage staff accounts, roles, and access.
           </p>
         </div>
         <Button onClick={() => setCreateOpen(true)}>

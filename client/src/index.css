@@ -47,20 +47,6 @@
     color: #1e3a8a;
   }
 }
-.auth-panel::after {
-  content: '';
-  position: absolute;
-  width: 700px;
-  height: 700px;
-  border: 1px solid #ffffff08;
-  border-radius: 50%;
-  right: -450px;
-  bottom: -320px;
-  box-shadow:
-    0 0 0 65px #ffffff03,
-    0 0 0 130px #ffffff02,
-    0 0 0 195px #ffffff02;
-}
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
