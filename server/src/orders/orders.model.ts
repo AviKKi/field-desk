@@ -139,3 +139,31 @@ export const crmCancellations = sqliteTable(
     ),
   ],
 );
+
+export interface FulfillmentProgress {
+  orderedQty: number;
+  canceledQty: number;
+  loadingQty: number;
+  dispatchedQty: number;
+  deliveredQty: number;
+}
+export function fulfillmentState(
+  progress: FulfillmentProgress,
+):
+  | 'CANCELLED'
+  | 'DELIVERED'
+  | 'PARTIALLY_DELIVERED'
+  | 'DISPATCHED'
+  | 'PARTIALLY_DISPATCHED'
+  | 'LOADING'
+  | 'UNFULFILLED' {
+  const active = progress.orderedQty - progress.canceledQty;
+  if (active === 0) return 'CANCELLED';
+  if (progress.deliveredQty >= active) return 'DELIVERED';
+  if (progress.deliveredQty > 0) return 'PARTIALLY_DELIVERED';
+  if (progress.dispatchedQty >= active) return 'DISPATCHED';
+  if (progress.dispatchedQty > 0) return 'PARTIALLY_DISPATCHED';
+  return progress.loadingQty > 0 ? 'LOADING' : 'UNFULFILLED';
+}
+export type Order = typeof crmOrders.$inferSelect;
+export type CommercialLine = typeof crmOrderLines.$inferSelect;
