@@ -19,21 +19,42 @@ For unattended admin creation, supply `ADMIN_NAME`, `ADMIN_EMAIL`, and `ADMIN_PA
 
 ## Commands
 
-| Command             | Purpose                                                                   |
-| ------------------- | ------------------------------------------------------------------------- |
-| `pnpm dev`          | Build shared contracts, then watch all three packages                     |
-| `pnpm dev:server`   | Build shared contracts and watch the API                                  |
-| `pnpm dev:client`   | Run Vite; build shared first on a fresh checkout                          |
-| `pnpm check`        | Lint, type-check, run API tests, and build                                |
-| `pnpm metrics`      | Write source counts and file hashes to `reports/source-metrics.json`      |
-| `pnpm format:check` | Check formatting                                                          |
-| `pnpm db:generate`  | Generate a migration after changing the Drizzle schema                    |
-| `pnpm db:migrate`   | Apply committed migrations                                                |
-| `pnpm db:seed`      | Add the local catalog, customers, and staff desks after creating an admin |
-| `pnpm db:studio`    | Open Drizzle Studio                                                       |
-| `pnpm admin:create` | Bootstrap an admin without public privilege escalation                    |
+| Command             | Purpose                                                                    |
+| ------------------- | -------------------------------------------------------------------------- |
+| `pnpm dev`          | Build shared contracts, then watch all three packages                      |
+| `pnpm dev:server`   | Build shared contracts and watch the API                                   |
+| `pnpm dev:client`   | Run Vite; build shared first on a fresh checkout                           |
+| `pnpm check`        | Lint, type-check, run API tests, and build                                 |
+| `pnpm metrics`      | Write source counts and file hashes to `reports/source-metrics.json`       |
+| `pnpm format:check` | Check formatting                                                           |
+| `pnpm db:generate`  | Generate a migration after changing the Drizzle schema                     |
+| `pnpm db:migrate`   | Apply committed migrations                                                 |
+| `pnpm db:seed`      | Add a complete local dataset across order, fulfillment, and account states |
+| `pnpm db:studio`    | Open Drizzle Studio                                                        |
+| `pnpm admin:create` | Bootstrap an admin without public privilege escalation                     |
 
 Keep migration SQL and its Drizzle metadata together in version control. Migrations are explicit; starting the API never changes the schema.
+
+## Local dataset
+
+`pnpm db:seed` requires an existing active admin and applied migrations. It creates ten customer accounts and 24 orders with ordinary business histories, plus the product catalog and four staff desks. It applies real order, warehouse, and account actions so approvals, physical quantities, charges, points, and audit records agree.
+
+The dataset includes:
+
+| Area                | Records to review                                                                                                                        |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Approval            | Draft, pending approval, approved, rejected, revised awaiting reapproval, and canceled orders                                            |
+| Fulfillment         | Not started, loading, partly dispatched, dispatched, partly delivered, delivered, and canceled demand                                    |
+| Shipments           | Multiple batches, a second batch loading during partial delivery, voided loading after a revision, and an authorized dispatch supplement |
+| Accounts            | Unpaid, partly paid, fully paid, an unapplied advance, and customer receipts                                                             |
+| Returns and credits | Paid returns with deductions, open credit, partial credit application, refund, and settlement reversals                                  |
+| Rewards             | Locked, available, redeemed, and pending recovery points                                                                                 |
+
+The Sales orders table has separate **Approval** and **Fulfillment** columns and filters. Customer account tabs show the receipts, credit notes, refunds, rewards, and activity behind each balance.
+
+The seed is transactional and records completion only after all account checks pass. Running it again reports the existing dataset and preserves subsequent edits and transactions, including when another administrator runs the command. It does not reset customer data or create saved workflow runs. It refuses production use.
+
+Staff desks have no published login passwords; use the existing admin's **Working as** selector or create staff accounts through Team members. The seed does not replace or promote existing user accounts.
 
 ## Verification
 

@@ -29,6 +29,8 @@ The service integration suite separately checks all saved workflows in whole and
 
 `server/test/migrations.test.ts` migrates a populated database from the preceding schema. It verifies that existing credits, applications, refunds, and receipt funding survive the upgrade, that new reversal links are valid, and that reapplying migrations is safe. Authentication tests cover strict validation, session expiry/revocation, default-deny access, CSRF, credential throttling, and password handling.
 
+The seed suite verifies all six commercial states and seven fulfillment states across the 24 seeded orders, checks customer balances and reward buckets, and verifies that no saved workflow runs are created. It also verifies reruns by another administrator, preservation of manual changes, rollback after a missing staff role, local reset followed by reseeding, and production/access restrictions.
+
 ## Recorded evidence
 
 `pnpm test` generates `reports/customer-workflows.json` with each independent workflow outcome, the operating-term version, the sequence seed convention, action response times, and a memory sample. `complete` requires every expected case to finish successfully. The test command's exit status also covers other suites and setup/teardown failures; the JSON file alone is not a substitute for that status.

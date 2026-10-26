@@ -1,6 +1,6 @@
 # Using the CRM
 
-Sign in with your email and password. The CRM opens on **Customers**. Use the sidebar to switch between Customers, Sales orders, Accounts, and, for administrators, Team members and Sample data.
+Sign in with your email and password. The CRM opens on **Customers**. Use the sidebar to switch between Customers, Sales orders, Accounts, and, for administrators, Team members.
 
 ## Customers
 
@@ -28,7 +28,7 @@ From a customer record, select **New order**. You can also use **Sales orders â†
 
 The order opens as a draft. **Submit for approval** sends the active commercial revision for KAM review. KAM can **Approve order** or **Reject**, with a reason required for rejection. Admin can perform these actions directly.
 
-The sales order table supports search by order number or customer and filtering by status. Select an order number or **View order** to open its detail page.
+The sales order table supports search by order number or customer, filtering by approval status, and filtering by fulfillment progress. Approval and fulfillment are shown separately: an approved order may still be loading, dispatched, partially delivered, or delivered. Select an order number or **View order** to open its detail page.
 
 ## Editing and cancellation
 
@@ -70,14 +70,6 @@ In **Rewards**, Sales or Accounts can redeem available points against an outstan
 Buttons appear for the acting staff member's role. The API independently enforces permissions. Sales creates and revises orders; KAM approves revisions; Warehouse manages physical fulfillment; Accounts handles cash and credit. Administrators can use **Working as** in the header to act as another active staff member. Both the acting staff member and signed-in administrator are recorded.
 
 Forms show validation and business errors without closing. If another activity changed a record, reload its current version before resubmitting. Action forms offer **Reload current record**; order detail pages also have **Refresh**. Saving uses request keys so retrying an uncertain action response does not repeat its postings.
-
-## Local sample data
-
-Administrators can open **Sample data** from the sidebar. **Load sample catalog** adds products, sample customers, and staff desks while retaining existing transactions. The sample staff desks have no published login credentials.
-
-Start a sample workflow, advance one activity at a time, or run its remaining activities. **Open customer** takes you to the normal customer record, where orders and account changes can be reviewed. Saved workflows can be reopened from the table. Their URL includes the workflow identifier; reopening a URL reads the existing history without replaying it. Only the initiating administrator can open or advance a saved workflow.
-
-**Reset data** deletes local CRM customers, transactions, and saved workflows, retains staff accounts, and requires typing `RESET CRM DATA`. Local sample operations are disabled in production.
 
 ## Related
 
