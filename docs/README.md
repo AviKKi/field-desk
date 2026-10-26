@@ -1,6 +1,6 @@
 # Documentation
 
-- [Operations desk and sample workflows](operations.md)
+- [CRM navigation, customer records, and order forms](operations.md)
 - [Architecture, authentication, and deployment](architecture.md)
 - [API and role access](api.md)
 - [Business terms and settlement conventions](business-terms.md)

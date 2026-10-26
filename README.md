@@ -8,10 +8,10 @@ A local CRM for sales, warehouse operations, customer accounts, and finance, bui
 | Fulfillment    | Loading, multiple shipments, partial deliveries, returns, and shipment corrections    |
 | Accounts       | Customer receipts, cash allocation, credits, applications, and recorded refunds       |
 | Rewards        | Locked and available points, redemption history, and pending recoveries               |
-| Activity       | Staff attribution, document history, posting details, retries, and sample workflows   |
+| Activity       | Staff attribution, customer timelines, commercial revisions, and posting history      |
 | Administration | Email/password sign-in, user management, and Sales/KAM/Warehouse/Accounts/Admin roles |
 
-Use the operations desk to record individual activities or load a sample workflow and advance it one step at a time. Account summaries and document histories update from the API after each action.
+Use customer and sales order tables to find records, open their detail pages, and manage orders through dedicated creation, editing, approval, cancellation, and fulfillment forms. Customer account pages group payments, credits, refunds, and rewards. Administrators can prepare sample records from the separate Sample data page.
 
 See [development setup](CONTRIBUTING.md) to run locally and the [documentation index](docs/README.md) for operating and API references.
 

@@ -1,11 +1,12 @@
 # Architecture
 
-The repository uses sibling pnpm packages for the React client, NestJS API, and shared contracts.
+The repository uses sibling pnpm packages for the React client, NestJS API, and shared contracts. CRM navigation uses separate list, detail, and form routes. Zustand holds the acting staff selection in memory; fetched records are held by the route data hooks.
 
 ```text
 client/src/
   components/ui/  Owned shadcn/ui-style Radix components
-  pages/          Route screens
+  pages/          Customer, order, account, staff, and sign-in routes
+  features/crm/   Record forms, account tables, and CRM data access
   store/          In-memory Zustand session state
   lib/            HTTP client and utilities
 server/src/

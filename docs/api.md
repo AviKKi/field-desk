@@ -23,6 +23,7 @@ Roles are `SALES`, `KAM`, `WAREHOUSE`, `ACCOUNTS`, and `ADMIN`. Public user fiel
 
 | Method | Route                         | Purpose                                                                |
 | ------ | ----------------------------- | ---------------------------------------------------------------------- |
+| GET    | `/crm/accounts`               | Customer account balance rows for the Accounts table                   |
 | GET    | `/crm/bootstrap`              | Customers, catalog, orders, and available staff                        |
 | GET    | `/crm/orders/:id`             | Order, lines, shipments, revisions, approvals, and timeline            |
 | GET    | `/crm/orders/:id/timeline`    | Order activity                                                         |
@@ -57,7 +58,9 @@ Send `POST /crm/actions` with this envelope:
 
 Order operations use the order's version; account operations use the customer's version. Every applied action advances the customer and its order versions. Reuse the complete original envelope for a retry. A reused key with different input returns an idempotency conflict. Resolve a conflict by refreshing and submitting the intended new action with a fresh key and current version.
 
-Supported types are `PUNCH_ORDER`, `EDIT_ORDER`, `SUBMIT_ORDER`, `APPROVE_ORDER`, `REJECT_ORDER`, `START_LOADING`, `DISPATCH_SHIPMENT`, `CONFIRM_DELIVERY`, `CANCEL_REMAINDER`, `RECORD_RETURN`, `RECEIVE_CUSTOMER_PAYMENT`, `ALLOCATE_PAYMENT`, `REDEEM_POINTS`, `ISSUE_CREDIT_NOTE`, `APPLY_CREDIT_NOTE`, `REFUND_CREDIT_NOTE`, `REVERSE_CREDIT_APPLICATION`, `REVERSE_CREDIT_REFUND`, and `CORRECT_DISPATCHED_ORDER`.
+Supported types are `UPDATE_CUSTOMER`, `PUNCH_ORDER`, `EDIT_ORDER`, `SUBMIT_ORDER`, `APPROVE_ORDER`, `REJECT_ORDER`, `START_LOADING`, `DISPATCH_SHIPMENT`, `CONFIRM_DELIVERY`, `CANCEL_REMAINDER`, `RECORD_RETURN`, `RECEIVE_CUSTOMER_PAYMENT`, `ALLOCATE_PAYMENT`, `REDEEM_POINTS`, `ISSUE_CREDIT_NOTE`, `APPLY_CREDIT_NOTE`, `REFUND_CREDIT_NOTE`, `REVERSE_CREDIT_APPLICATION`, `REVERSE_CREDIT_REFUND`, and `CORRECT_DISPATCHED_ORDER`.
+
+`UPDATE_CUSTOMER` accepts `{ customerId, name, code }`, requires Sales, Accounts, or Admin, and uses the customer version. Customer codes remain unique and edits are recorded in activity history. Catalog order rows in `/crm/bootstrap` include `totalPaise` for the current commercial revision.
 
 `CANCEL_REMAINDER` accepts optional `items: [{ lineKey, qty }]` to cancel selected unshipped quantities; omit `items` to cancel all eligible demand. An explicit empty list is rejected.
 
