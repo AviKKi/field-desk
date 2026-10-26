@@ -171,12 +171,7 @@ export class AccountsService {
       creditsOpenPaise: safe(
         credits.reduce((sum, row) => sum + row.availablePaise, 0),
       ),
-      points: {
-        locked: this.rewardsRepository.lockedForCustomer(customerId),
-        available: this.rewardsRepository.availableForCustomer(customerId),
-        redeemed: this.rewardsRepository.spentForCustomer(customerId),
-        clawbackPending: this.rewardsRepository.debtForCustomer(customerId),
-      },
+      points: this.rewardsService.balances(customerId),
     };
   }
   ledger(customerId: string): LedgerView {

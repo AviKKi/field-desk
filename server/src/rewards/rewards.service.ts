@@ -188,16 +188,19 @@ export class RewardsService {
       });
     }
   }
+  balances(customerId: string) {
+    return {
+      locked: this.rewardsRepository.lockedForCustomer(customerId),
+      available: this.rewardsRepository.availableForCustomer(customerId),
+      redeemed: this.rewardsRepository.spentForCustomer(customerId),
+      clawbackPending: this.rewardsRepository.debtForCustomer(customerId),
+    };
+  }
   forCustomer(customerId: string) {
     if (!this.customersRepository.findById(customerId))
       throw new NotFoundException('Customer not found');
     return {
-      points: {
-        locked: this.rewardsRepository.lockedForCustomer(customerId),
-        available: this.rewardsRepository.availableForCustomer(customerId),
-        redeemed: this.rewardsRepository.spentForCustomer(customerId),
-        clawbackPending: this.rewardsRepository.debtForCustomer(customerId),
-      },
+      points: this.balances(customerId),
       entries: this.rewardsRepository.entriesForCustomer(customerId),
       redemptions: this.rewardsRepository.redemptionsForCustomer(customerId),
     };

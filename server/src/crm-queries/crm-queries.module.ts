@@ -21,6 +21,5 @@ import { CrmQueriesService } from './crm-queries.service.js';
   ],
   controllers: [CrmQueriesController],
   providers: [CrmQueriesService],
-  exports: [CrmQueriesService],
 })
 export class CrmQueriesModule {}

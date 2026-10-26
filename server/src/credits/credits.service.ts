@@ -214,10 +214,11 @@ export class CreditsService {
       .creditsForCustomer(customerId)
       .map((note) => ({
         ...note,
-        availablePaise:
-          note.amount_paise -
-          this.creditsRepository.appliedFromCredit(note.id) -
+        availablePaise: new CreditBalance(
+          note.amount_paise,
+          this.creditsRepository.appliedFromCredit(note.id),
           this.creditsRepository.refundedFromCredit(note.id),
+        ).availablePaise,
       }));
   }
 }

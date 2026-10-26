@@ -16,6 +16,7 @@ import type {
   ActionResult,
   CrmCommand,
   CustomerSummary,
+  CustomerSnapshot,
 } from '@crm/shared/crm';
 import { DatabaseService } from '../src/database/database.service.js';
 import { ActionsService } from '../src/actions/actions.service.js';
@@ -96,9 +97,9 @@ describe('CRM operations', { concurrency: false }, () => {
     }
     for (const credit of summary.credits) assert.ok(credit.availablePaise >= 0);
     for (const value of Object.values(summary.points)) assert.ok(value >= 0);
-    for (const order of queries
-      .bootstrap(admin)
-      .orders.filter((row) => row.customer_id === summary.customer.id)) {
+    for (const order of orders
+      .list()
+      .filter((row) => row.customer_id === summary.customer.id)) {
       for (const line of orders.detail(order.id).lines) {
         assert.ok(line.open >= 0);
         assert.ok(line.returned <= line.delivered);
@@ -179,9 +180,9 @@ describe('CRM operations', { concurrency: false }, () => {
   it('handles partial payments, partial returns, refund limits, and credit reversals', () => {
     const report = fixture('customer-payment');
     const customerId = report.customerId;
-    const first = queries
-      .bootstrap(admin)
-      .orders.filter((order) => order.customer_id === customerId)
+    const first = orders
+      .list()
+      .filter((order) => order.customer_id === customerId)
       .at(-1)!;
     const line = orders.detail(first.id).shipments[0]!.lines[0]!;
     const returned = run({
@@ -229,9 +230,9 @@ describe('CRM operations', { concurrency: false }, () => {
 
   it('rejects over-delivery, over-return, loading too many units, duplicate lines and stale approval without mutation', () => {
     const report = fixture('partial-delivery');
-    const order = queries
-      .bootstrap(admin)
-      .orders.find((row) => row.customer_id === report.customerId)!;
+    const order = orders
+      .list()
+      .find((row) => row.customer_id === report.customerId)!;
     const detail = orders.detail(order.id);
     const line = detail.shipments[0]!.lines[0]!;
     for (const command of [
@@ -282,9 +283,9 @@ describe('CRM operations', { concurrency: false }, () => {
 
   it('serializes two HTTP return requests and rejects forged actors', async () => {
     const report = fixture('second-delivery');
-    const order = queries
-      .bootstrap(admin)
-      .orders.find((row) => row.customer_id === report.customerId)!;
+    const order = orders
+      .list()
+      .find((row) => row.customer_id === report.customerId)!;
     const line = orders.detail(order.id).shipments[0]!.lines[0]!;
     const login = await request(app.getHttpServer())
       .post('/api/auth/login')
@@ -321,9 +322,7 @@ describe('CRM operations', { concurrency: false }, () => {
         .sort(),
       ['APPLIED', 'CONFLICT'],
     );
-    const sales = queries
-      .bootstrap(admin)
-      .actors.find((actor) => actor.role === 'SALES')!;
+    const sales = users.listActive().find((actor) => actor.role === 'SALES')!;
     assert.throws(() =>
       actions.execute(
         { ...envelope, actorId: admin.id, idempotencyKey: randomUUID() },
@@ -404,9 +403,9 @@ describe('CRM operations', { concurrency: false }, () => {
   });
   it('restores an applied credit when the later goods are returned', () => {
     const report = fixture('credit-settlement');
-    const newer = queries
-      .bootstrap(admin)
-      .orders.find((order) => order.customer_id === report.customerId)!;
+    const newer = orders
+      .list()
+      .find((order) => order.customer_id === report.customerId)!;
     const line = orders.detail(newer.id).shipments[0]!.lines[0]!;
     assert.equal(
       run({
@@ -435,9 +434,9 @@ describe('CRM operations', { concurrency: false }, () => {
 
   it('restores redeemed points when their settlement charge is returned', () => {
     const report = fixture('redemption');
-    const newer = queries
-      .bootstrap(admin)
-      .orders.find((order) => order.customer_id === report.customerId)!;
+    const newer = orders
+      .list()
+      .find((order) => order.customer_id === report.customerId)!;
     const line = orders.detail(newer.id).shipments[0]!.lines[0]!;
     assert.equal(
       run({
@@ -537,9 +536,9 @@ describe('CRM operations', { concurrency: false }, () => {
 
   it('voids pending loading documents after a correction and keeps original dispatch evidence', () => {
     const report = fixture('partial-delivery');
-    const order = queries
-      .bootstrap(admin)
-      .orders.find((row) => row.customer_id === report.customerId)!;
+    const order = orders
+      .list()
+      .find((row) => row.customer_id === report.customerId)!;
     const detail = orders.detail(order.id);
     const old = JSON.stringify(detail.shipments[0]);
     const loading = run({
@@ -941,9 +940,9 @@ describe('CRM operations', { concurrency: false }, () => {
       }).status,
       'REJECTED',
     );
-    const warehouse = queries
-      .bootstrap(admin)
-      .actors.find((user) => user.role === 'WAREHOUSE')!;
+    const warehouse = users
+      .listActive()
+      .find((user) => user.role === 'WAREHOUSE')!;
     assert.equal(run(command, warehouse).errors[0]?.code, 'FORBIDDEN');
     check(accounts.summary(customerId));
   });
@@ -951,9 +950,7 @@ describe('CRM operations', { concurrency: false }, () => {
   it('cancels selected unshipped quantities and preserves other demand and dispatched history', () => {
     const report = fixture('partial-delivery');
     const customerId = report.customerId;
-    const order = queries
-      .bootstrap(admin)
-      .orders.find((row) => row.customer_id === customerId)!;
+    const order = orders.list().find((row) => row.customer_id === customerId)!;
     const before = orders.detail(order.id);
     const first = before.lines[0]!;
     const canceled = run({
@@ -1093,12 +1090,10 @@ describe('CRM operations', { concurrency: false }, () => {
       name: 'Another account',
       code: randomUUID(),
     });
-    const sales = queries
-      .bootstrap(admin)
-      .actors.find((row) => row.role === 'SALES')!;
-    const warehouse = queries
-      .bootstrap(admin)
-      .actors.find((row) => row.role === 'WAREHOUSE')!;
+    const sales = users.listActive().find((row) => row.role === 'SALES')!;
+    const warehouse = users
+      .listActive()
+      .find((row) => row.role === 'WAREHOUSE')!;
     const command: CrmCommand = {
       type: 'UPDATE_CUSTOMER',
       payload: {
@@ -1141,7 +1136,7 @@ describe('CRM operations', { concurrency: false }, () => {
       .send({ email: admin.email, password: 'operations-test-password' })
       .expect(200);
     const cookies = login.headers['set-cookie'] as unknown as string[];
-    for (const order of queries.bootstrap(admin).orders) {
+    for (const order of orders.list()) {
       assert.equal(
         order.totalPaise,
         orders
@@ -1198,9 +1193,9 @@ describe('CRM operations', { concurrency: false }, () => {
   });
   it('serves domain read routes consistently with the customer and order views', async () => {
     const prepared = fixture('paid-return');
-    const order = queries
-      .bootstrap(admin)
-      .orders.find((row) => row.customer_id === prepared.customerId)!;
+    const order = orders
+      .list()
+      .find((row) => row.customer_id === prepared.customerId)!;
     const login = await request(app.getHttpServer())
       .post('/api/auth/login')
       .send({ email: admin.email, password: 'operations-test-password' })
@@ -1243,5 +1238,16 @@ describe('CRM operations', { concurrency: false }, () => {
       accounts.ledger(prepared.customerId).rewards,
     );
     assert.deepEqual(await read('catalog'), queries.bootstrap(admin).skus);
+    assert.deepEqual(await read('bootstrap'), queries.bootstrap(admin));
+    const snapshot = (await read(
+      `customers/${prepared.customerId}/snapshot`,
+    )) as CustomerSnapshot;
+    const expected = queries.snapshot(prepared.customerId);
+    assert.deepEqual(
+      { ...snapshot, review: { ...snapshot.review, checkedAt: '' } },
+      { ...expected, review: { ...expected.review, checkedAt: '' } },
+    );
+    const sales = users.listActive().find((user) => user.role === 'SALES')!;
+    assert.deepEqual(queries.bootstrap(sales).actors, [sales]);
   });
 });
