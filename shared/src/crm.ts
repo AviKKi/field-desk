@@ -294,3 +294,13 @@ export interface ScenarioReport {
   steps: Array<{ label: string; result: ActionResult }>;
   summary: CustomerSummary;
 }
+
+export interface SavedWorkflow {
+  id: string;
+  scenarioId: string;
+  customerId: string;
+  customerName: string;
+  complete: boolean;
+  stepCount: number;
+  createdAt: string;
+}

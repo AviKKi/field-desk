@@ -23,6 +23,16 @@ const sampleSchema = z.object({ scenarioId: scenarioSchema }).strict();
 export class CrmController {
   constructor(private readonly crm: CrmService) {}
   @Roles('ADMIN')
+  @Get('samples')
+  savedSamples(@CurrentUser() user: User) {
+    return this.crm.savedSamples(user);
+  }
+  @Roles('ADMIN')
+  @Get('samples/:id')
+  sampleReport(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.crm.sampleReport(id, user);
+  }
+  @Roles('ADMIN')
   @Post('samples')
   startSample(
     @Body(new ZodValidationPipe(sampleSchema))

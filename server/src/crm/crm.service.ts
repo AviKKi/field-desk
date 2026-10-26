@@ -28,6 +28,7 @@ import type {
   LedgerView,
   ScenarioReport,
   Sku,
+  SavedWorkflow,
 } from '@crm/shared/crm';
 import { DatabaseService } from '../database/database.service.js';
 
@@ -2689,6 +2690,68 @@ export class CrmService {
       },
       { behavior: 'immediate' },
     );
+  }
+
+  savedSamples(user: User): SavedWorkflow[] {
+    if (user.role !== 'ADMIN' || this.config.get('NODE_ENV') === 'production')
+      throw new ForbiddenException(
+        'Sample workflows are available to local administrators',
+      );
+    return this.all<{
+      id: string;
+      scenario_id: string;
+      customer_id: string;
+      customer_name: string;
+      complete: number;
+      step_count: number;
+      created_at: string;
+    }>(
+      sql`select s.*, c.name customer_name,
+        (select count(*) from sample_steps t where t.run_id=s.id) step_count
+        from sample_runs s join customers c on c.id=s.customer_id
+        where s.requester_id=${user.id} order by s.created_at desc,s.rowid desc limit 50`,
+    ).map((row) => ({
+      id: row.id,
+      scenarioId: row.scenario_id,
+      customerId: row.customer_id,
+      customerName: row.customer_name,
+      complete: row.complete === 1,
+      stepCount: row.step_count,
+      createdAt: row.created_at,
+    }));
+  }
+
+  sampleReport(runId: string, user: User): ScenarioReport {
+    if (user.role !== 'ADMIN' || this.config.get('NODE_ENV') === 'production')
+      throw new ForbiddenException(
+        'Sample workflows are available to local administrators',
+      );
+    const sample = this.one<{
+      id: string;
+      scenario_id: string;
+      customer_id: string;
+      requester_id: string;
+      complete: number;
+    }>(sql`select * from sample_runs where id=${runId}`);
+    if (!sample) throw new NotFoundException('Sample workflow not found');
+    if (sample.requester_id !== user.id)
+      throw new ForbiddenException(
+        'This sample belongs to another staff member',
+      );
+    const steps = this.all<{ label: string; result: string }>(
+      sql`select label,result from sample_steps where run_id=${runId} order by position`,
+    ).map((row) => ({
+      label: row.label,
+      result: JSON.parse(row.result) as ActionResult,
+    }));
+    return {
+      id: sample.scenario_id,
+      runId: sample.id,
+      customerId: sample.customer_id,
+      complete: sample.complete === 1,
+      steps,
+      summary: this.summary(sample.customer_id),
+    };
   }
 
   startSample(id: string, user: User): ScenarioReport {

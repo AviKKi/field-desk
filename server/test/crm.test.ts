@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Test } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
@@ -683,5 +684,83 @@ describe('CRM operations', { concurrency: false }, () => {
       'APPLIED',
     );
     check(crm.summary(report.customerId));
+  });
+
+  it('reopens saved workflows from a separate database connection without replaying actions', () => {
+    const started = crm.startSample('credit-settlement', admin);
+    let current = crm.advanceSample(started.runId!, admin);
+    current = crm.advanceSample(started.runId!, admin);
+    const before = crm.ledger(current.customerId);
+    const versions = crm.summary(current.customerId).customer.version;
+    const connection = new DatabaseService(app.get(ConfigService));
+    try {
+      const restored = new CrmService(connection, app.get(ConfigService));
+      const report = restored.sampleReport(started.runId!, admin);
+      assert.deepEqual(report, current);
+      assert.deepEqual(restored.ledger(current.customerId), before);
+      assert.equal(
+        restored.summary(current.customerId).customer.version,
+        versions,
+      );
+      const saved = restored
+        .savedSamples(admin)
+        .find((row) => row.id === started.runId);
+      assert.equal(saved?.stepCount, 2);
+      assert.equal(saved?.complete, false);
+      const completed = restored.advanceSample(started.runId!, admin, true);
+      assert.equal(completed.complete, true);
+      assert.equal(completed.summary.outstandingPaise, 2000);
+      assert.deepEqual(restored.sampleReport(started.runId!, admin), completed);
+      check(crm.summary(current.customerId));
+    } finally {
+      connection.onModuleDestroy();
+    }
+  });
+
+  it('restricts saved workflow access to its initiating administrator', async () => {
+    const started = crm.startSample('receipt-retry', admin);
+    const other = await app
+      .get(UsersService)
+      .create({
+        name: 'Other Admin',
+        email: 'other-ops@example.test',
+        password: 'other-operations-password',
+        role: 'ADMIN',
+      });
+    assert.ok(!crm.savedSamples(other).some((row) => row.id === started.runId));
+    assert.throws(
+      () => crm.sampleReport(started.runId!, other),
+      /another staff member/,
+    );
+    assert.throws(
+      () => crm.advanceSample(started.runId!, other),
+      /another staff member/,
+    );
+    const sales = crm
+      .bootstrap(admin)
+      .actors.find((row) => row.role === 'SALES')!;
+    assert.throws(() => crm.savedSamples(sales), /local administrators/);
+    assert.throws(
+      () => crm.sampleReport(started.runId!, sales),
+      /local administrators/,
+    );
+    assert.throws(() => crm.sampleReport(randomUUID(), admin), /not found/);
+    const login = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: admin.email, password: 'operations-test-password' })
+      .expect(200);
+    const cookie = (
+      login.headers['set-cookie'] as unknown as string[]
+    )[0]!.split(';')[0]!;
+    await request(app.getHttpServer())
+      .get('/api/crm/samples')
+      .set('Cookie', cookie)
+      .expect(200);
+    const read = await request(app.getHttpServer())
+      .get(`/api/crm/samples/${started.runId}`)
+      .set('Cookie', cookie)
+      .expect(200);
+    assert.equal((read.body as ScenarioReport).steps.length, 0);
+    await request(app.getHttpServer()).get('/api/crm/samples').expect(401);
   });
 });
