@@ -93,3 +93,4 @@ Action responses contain `status`, `actionId`, `errors`, `decisions`, `effects`,
 - [Verification](verification.md)
 - [Architecture](architecture.md)
 - [Development setup](../CONTRIBUTING.md)
+- [Backend module index](../server/src/README.md)
