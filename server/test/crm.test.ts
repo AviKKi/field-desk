@@ -719,14 +719,12 @@ describe('CRM operations', { concurrency: false }, () => {
 
   it('restricts saved workflow access to its initiating administrator', async () => {
     const started = crm.startSample('receipt-retry', admin);
-    const other = await app
-      .get(UsersService)
-      .create({
-        name: 'Other Admin',
-        email: 'other-ops@example.test',
-        password: 'other-operations-password',
-        role: 'ADMIN',
-      });
+    const other = await app.get(UsersService).create({
+      name: 'Other Admin',
+      email: 'other-ops@example.test',
+      password: 'other-operations-password',
+      role: 'ADMIN',
+    });
     assert.ok(!crm.savedSamples(other).some((row) => row.id === started.runId));
     assert.throws(
       () => crm.sampleReport(started.runId!, other),
@@ -762,5 +760,261 @@ describe('CRM operations', { concurrency: false }, () => {
       .expect(200);
     assert.equal((read.body as ScenarioReport).steps.length, 0);
     await request(app.getHttpServer()).get('/api/crm/samples').expect(401);
+  });
+  it('conserves money, quantities, and points through varied delivery and settlement histories', () => {
+    let seed = 1879461;
+    const pick = (limit: number) => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed % limit;
+    };
+    let appliedCount = 0;
+    for (let caseIndex = 0; caseIndex < 40; caseIndex++) {
+      const customer = crm.createCustomer(admin, {
+        name: `History ${caseIndex}`,
+        code: randomUUID(),
+      });
+      const qty = 2 + pick(4),
+        price = [101, 333, 999, 10000][pick(4)]!;
+      let deliveredValue = 0,
+        returnedValue = 0,
+        fees = 0,
+        cash = 0,
+        refunds = 0,
+        spent = 0;
+      let firstApproved = false,
+        secondApproved = false,
+        canceled = 0,
+        returnedQty = 0;
+      let last: ActionEnvelope | undefined;
+      const verify = () => {
+        const value = crm.summary(customer.id);
+        check(value);
+        assert.equal(
+          value.netBalancePaise,
+          deliveredValue - returnedValue + fees - cash + refunds - spent,
+          `money in history ${caseIndex}`,
+        );
+        const entitled =
+          (firstApproved ? qty - canceled - returnedQty : 0) * 1000 +
+          (secondApproved ? 1000 : 0);
+        assert.equal(
+          value.points.locked +
+            value.points.available +
+            value.points.redeemed -
+            value.points.clawbackPending,
+          entitled,
+          `points in history ${caseIndex}`,
+        );
+      };
+      const apply = (command: CrmCommand) => {
+        const payload = command.payload;
+        const expectedVersion =
+          'orderId' in payload
+            ? crm.detail(payload.orderId).order.version
+            : crm.summary(payload.customerId).customer.version;
+        last = { command, expectedVersion, idempotencyKey: randomUUID() };
+        const result = crm.execute(last, admin);
+        assert.equal(result.status, 'APPLIED', JSON.stringify(result.errors));
+        appliedCount++;
+        verify();
+        return result;
+      };
+      const first = apply({
+        type: 'PUNCH_ORDER',
+        payload: {
+          customerId: customer.id,
+          items: [{ skuId: 'sku-a', qty, unitPricePaise: price }],
+        },
+      }).references.orderId!;
+      apply({ type: 'SUBMIT_ORDER', payload: { orderId: first } });
+      firstApproved = true;
+      apply({
+        type: 'APPROVE_ORDER',
+        payload: { orderId: first, revision: 1 },
+      });
+      if (caseIndex % 2 === 0) {
+        const advance = price + pick(price);
+        cash += advance;
+        apply({
+          type: 'RECEIVE_CUSTOMER_PAYMENT',
+          payload: {
+            customerId: customer.id,
+            amountPaise: advance,
+            reference: 'Advance',
+          },
+        });
+      }
+      const loaded = apply({
+        type: 'START_LOADING',
+        payload: {
+          orderId: first,
+          items: [
+            { lineKey: crm.detail(first).lines[0]!.lineKey, qty: qty - 1 },
+          ],
+        },
+      }).references.shipmentId!;
+      apply({
+        type: 'DISPATCH_SHIPMENT',
+        payload: { orderId: first, shipmentId: loaded },
+      });
+      const shippedLine = crm.detail(first).shipments[0]!.lines[0]!;
+      deliveredValue += price;
+      apply({
+        type: 'CONFIRM_DELIVERY',
+        payload: {
+          orderId: first,
+          shipmentId: loaded,
+          items: [{ shipmentLineId: shippedLine.id, qty: 1 }],
+        },
+      });
+      const partial = 1 + pick(price * 2);
+      cash += partial;
+      apply({
+        type: 'RECEIVE_CUSTOMER_PAYMENT',
+        payload: {
+          customerId: customer.id,
+          amountPaise: partial,
+          reference: 'Part receipt',
+        },
+      });
+      if (qty > 2) {
+        deliveredValue += (qty - 2) * price;
+        apply({
+          type: 'CONFIRM_DELIVERY',
+          payload: {
+            orderId: first,
+            shipmentId: loaded,
+            items: [{ shipmentLineId: shippedLine.id, qty: qty - 2 }],
+          },
+        });
+      }
+      const second = apply({
+        type: 'PUNCH_ORDER',
+        payload: {
+          customerId: customer.id,
+          items: [{ skuId: 'sku-a', qty: 1, unitPricePaise: 10000 }],
+        },
+      }).references.orderId!;
+      apply({ type: 'SUBMIT_ORDER', payload: { orderId: second } });
+      secondApproved = true;
+      apply({
+        type: 'APPROVE_ORDER',
+        payload: { orderId: second, revision: 1 },
+      });
+      const secondShipment = apply({
+        type: 'START_LOADING',
+        payload: {
+          orderId: second,
+          items: [{ lineKey: crm.detail(second).lines[0]!.lineKey, qty: 1 }],
+        },
+      }).references.shipmentId!;
+      apply({
+        type: 'DISPATCH_SHIPMENT',
+        payload: { orderId: second, shipmentId: secondShipment },
+      });
+      deliveredValue += 10000;
+      apply({
+        type: 'CONFIRM_DELIVERY',
+        payload: {
+          orderId: second,
+          shipmentId: secondShipment,
+          items: [
+            {
+              shipmentLineId: crm.detail(second).shipments[0]!.lines[0]!.id,
+              qty: 1,
+            },
+          ],
+        },
+      });
+      const summary = crm.summary(customer.id);
+      const charge = summary.charges.find((row) => row.order_id === second)!;
+      const points = Math.min(
+        summary.points.available,
+        charge.outstandingPaise,
+        500 + pick(500),
+      );
+      if (points) {
+        spent += points;
+        apply({
+          type: 'REDEEM_POINTS',
+          payload: { customerId: customer.id, chargeId: charge.id, points },
+        });
+      }
+      returnedQty = 1 + pick(qty - 1);
+      const gross = returnedQty * price;
+      const fee = pick(Math.floor(gross / 4) + 1);
+      returnedValue += gross;
+      fees += fee;
+      apply({
+        type: 'RECORD_RETURN',
+        payload: {
+          orderId: first,
+          items: [{ shipmentLineId: shippedLine.id, qty: returnedQty }],
+          feePaise: fee,
+          reason: 'Returned shipment units',
+        },
+      });
+      canceled = 1;
+      apply({
+        type: 'CANCEL_REMAINDER',
+        payload: { orderId: first, reason: 'Cancel the unshipped unit' },
+      });
+      const credited = crm.summary(customer.id);
+      const credit = credited.credits.find((row) => row.availablePaise > 0);
+      const due = credited.charges.find((row) => row.outstandingPaise > 0);
+      if (credit && due && caseIndex % 2 === 0) {
+        apply({
+          type: 'APPLY_CREDIT_NOTE',
+          payload: {
+            customerId: customer.id,
+            creditNoteId: credit.id,
+            chargeId: due.id,
+            amountPaise: Math.min(credit.availablePaise, due.outstandingPaise),
+          },
+        });
+      } else if (credit) {
+        const amount = 1 + pick(credit.availablePaise);
+        refunds += amount;
+        apply({
+          type: 'REFUND_CREDIT_NOTE',
+          payload: {
+            customerId: customer.id,
+            creditNoteId: credit.id,
+            amountPaise: amount,
+            reference: 'Refund transfer',
+          },
+        });
+      }
+      const finalReceipt = 1 + pick(999);
+      cash += finalReceipt;
+      apply({
+        type: 'RECEIVE_CUSTOMER_PAYMENT',
+        payload: {
+          customerId: customer.id,
+          amountPaise: finalReceipt,
+          reference: 'Later receipt',
+        },
+      });
+      const before = crm.ledger(customer.id),
+        detail = crm.detail(first),
+        version = crm.summary(customer.id).customer.version;
+      assert.equal(crm.execute(last!, admin).status, 'APPLIED');
+      assert.deepEqual(crm.ledger(customer.id), before);
+      assert.equal(crm.summary(customer.id).customer.version, version);
+      const rejected = run({
+        type: 'RECORD_RETURN',
+        payload: {
+          orderId: first,
+          items: [{ shipmentLineId: shippedLine.id, qty: qty }],
+          feePaise: 0,
+          reason: 'Excess return requested',
+        },
+      });
+      assert.equal(rejected.status, 'REJECTED');
+      assert.deepEqual(crm.ledger(customer.id), before);
+      assert.deepEqual(crm.detail(first), detail);
+      verify();
+    }
+    assert.ok(appliedCount >= 600);
   });
 });
