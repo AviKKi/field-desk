@@ -8,25 +8,25 @@
   --color-card-foreground: var(--foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: #ffffff;
-  --color-secondary: #eaf1eb;
-  --color-secondary-foreground: #285440;
-  --color-muted: #f0f1ed;
-  --color-muted-foreground: #747970;
-  --color-accent: #eef2ec;
-  --color-accent-foreground: #203c2f;
+  --color-secondary: #eff6ff;
+  --color-secondary-foreground: #1d4ed8;
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #64748b;
+  --color-accent: #f1f5f9;
+  --color-accent-foreground: #0f172a;
   --color-destructive: #b43f3f;
-  --color-border: #e4e7df;
-  --color-input: #dce1d8;
-  --color-ring: #56816b;
+  --color-border: #e2e8f0;
+  --color-input: #cbd5e1;
+  --color-ring: #60a5fa;
   --font-sans:
     'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 :root {
-  --background: #f9faf6;
-  --foreground: #252e27;
+  --background: #f8fafc;
+  --foreground: #0f172a;
   --card: #ffffff;
-  --primary: #2d6048;
+  --primary: #2563eb;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -43,8 +43,8 @@
     cursor: pointer;
   }
   ::selection {
-    background: #c5e6d2;
-    color: #142c28;
+    background: #bfdbfe;
+    color: #1e3a8a;
   }
 }
 .auth-panel::after {
@@ -67,5 +67,23 @@
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@layer components {
+  .crm-table {
+    @apply w-full text-left text-sm;
+  }
+  .crm-table thead {
+    @apply border-b bg-slate-50 text-xs text-muted-foreground;
+  }
+  .crm-table th {
+    @apply whitespace-nowrap px-5 py-3 font-medium;
+  }
+  .crm-table td {
+    @apply px-5 py-4;
+  }
+  .crm-table tbody tr {
+    @apply border-b last:border-0 hover:bg-slate-50/60;
   }
 }

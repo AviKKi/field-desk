@@ -10,15 +10,51 @@ import {
   useLocation,
 } from 'react-router-dom';
 import { canAccess } from '@crm/shared/roles';
+import { CrmProvider } from '@/features/crm/context';
 import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Loading } from '@/components/feedback';
 const AuthPage = lazy(() =>
   import('@/pages/auth-page').then((module) => ({ default: module.AuthPage })),
 );
-const OperationsPage = lazy(() =>
-  import('@/pages/operations-page').then((module) => ({
-    default: module.OperationsPage,
+const CustomersPage = lazy(() =>
+  import('@/pages/customers-page').then((module) => ({
+    default: module.CustomersPage,
+  })),
+);
+const CustomerFormPage = lazy(() =>
+  import('@/pages/customers-page').then((module) => ({
+    default: module.CustomerFormPage,
+  })),
+);
+const CustomerDetailPage = lazy(() =>
+  import('@/pages/customers-page').then((module) => ({
+    default: module.CustomerDetailPage,
+  })),
+);
+const OrdersPage = lazy(() =>
+  import('@/pages/orders-page').then((module) => ({
+    default: module.OrdersPage,
+  })),
+);
+const OrderFormPage = lazy(() =>
+  import('@/pages/orders-page').then((module) => ({
+    default: module.OrderFormPage,
+  })),
+);
+const OrderDetailPage = lazy(() =>
+  import('@/pages/order-detail-page').then((module) => ({
+    default: module.OrderDetailPage,
+  })),
+);
+const AccountsPage = lazy(() =>
+  import('@/pages/accounts-page').then((module) => ({
+    default: module.AccountsPage,
+  })),
+);
+const SampleDataPage = lazy(() =>
+  import('@/pages/sample-data-page').then((module) => ({
+    default: module.SampleDataPage,
   })),
 );
 const UsersPage = lazy(() =>
@@ -64,6 +100,20 @@ function RequireRole({
     </div>
   );
 }
+function HomeRedirect() {
+  const location = useLocation();
+  const runId = new URLSearchParams(location.search).get('workflow');
+  return (
+    <Navigate
+      to={
+        runId
+          ? `/settings/sample-data?workflow=${encodeURIComponent(runId)}`
+          : '/customers'
+      }
+      replace
+    />
+  );
+}
 export function App() {
   const status = useAuthStore((state) => state.status);
   useEffect(() => {
@@ -100,8 +150,31 @@ export function App() {
           <Route path="/login" element={<AuthPage />} />
           <Route path="/register" element={<AuthPage register />} />
           <Route element={<RequireAuth />}>
-            <Route element={<AppShell />}>
-              <Route index element={<OperationsPage />} />
+            <Route
+              element={
+                <CrmProvider>
+                  <AppShell />
+                </CrmProvider>
+              }
+            >
+              <Route index element={<HomeRedirect />} />
+              <Route path="customers" element={<CustomersPage />} />
+              <Route path="customers/new" element={<CustomerFormPage />} />
+              <Route path="customers/:id" element={<CustomerDetailPage />} />
+              <Route path="customers/:id/edit" element={<CustomerFormPage />} />
+              <Route path="orders" element={<OrdersPage />} />
+              <Route path="orders/new" element={<OrderFormPage />} />
+              <Route path="orders/:id" element={<OrderDetailPage />} />
+              <Route path="orders/:id/edit" element={<OrderFormPage />} />
+              <Route path="accounts" element={<AccountsPage />} />
+              <Route
+                path="settings/sample-data"
+                element={
+                  <RequireRole area="users">
+                    <SampleDataPage />
+                  </RequireRole>
+                }
+              />
               <Route
                 path="users"
                 element={
@@ -114,15 +187,7 @@ export function App() {
                 path="sales"
                 element={
                   <RequireRole area="sales">
-                    <Navigate to="/" replace />
-                  </RequireRole>
-                }
-              />
-              <Route
-                path="accounts"
-                element={
-                  <RequireRole area="accounts">
-                    <Navigate to="/" replace />
+                    <Navigate to="/orders" replace />
                   </RequireRole>
                 }
               />
