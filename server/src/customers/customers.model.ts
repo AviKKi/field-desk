@@ -16,3 +16,5 @@ export const crmCustomers = sqliteTable(
     ),
   ],
 );
+
+export type Customer = typeof crmCustomers.$inferSelect;

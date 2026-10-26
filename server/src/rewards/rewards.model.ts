@@ -1,3 +1,4 @@
+import { safe } from '../common/domain.js';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -55,3 +56,27 @@ export const crmRewardLedger = sqliteTable(
     ),
   ],
 );
+
+export type RewardPosting = typeof crmRewardLedger.$inferSelect;
+export class RewardEntitlement {
+  static retained(
+    approved: boolean,
+    qty: number,
+    canceled: number,
+    returned: number,
+    pointsPerUnit: number,
+  ) {
+    return approved
+      ? safe(Math.max(0, qty - canceled - returned) * pointsPerUnit)
+      : 0;
+  }
+  static cashEarned(
+    cashPaise: number,
+    pointsPerUnit: number,
+    pricePaise: number,
+  ) {
+    return safe(
+      Number((BigInt(cashPaise) * BigInt(pointsPerUnit)) / BigInt(pricePaise)),
+    );
+  }
+}

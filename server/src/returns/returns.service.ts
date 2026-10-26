@@ -1,3 +1,4 @@
+import { ReturnQuantity } from './returns.model.js';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { OrdersRepository } from '../orders/orders.repository.js';
@@ -39,11 +40,7 @@ export class ReturnsService {
         line.id,
       );
       const prior = this.returnsRepository.returnedForShipmentLine(line.id);
-      if (item.qty > delivered - prior)
-        fail(
-          'RETURN_EXCEEDED',
-          'The return exceeds delivered, unreturned units',
-        );
+      new ReturnQuantity(delivered, prior).assertReturnable(item.qty);
       return {
         line,
         qty: item.qty,
@@ -51,11 +48,7 @@ export class ReturnsService {
       };
     });
     const gross = safe(returned.reduce((sum, item) => sum + item.amount, 0));
-    if (p.feePaise > gross)
-      fail(
-        'FEE_EXCEEDED',
-        'The deduction cannot exceed the returned goods value',
-      );
+    ReturnQuantity.assertFee(gross, p.feePaise);
     const returnId = randomUUID();
     c.references.returnId = returnId;
     this.returnsRepository.insertReturn(c, {

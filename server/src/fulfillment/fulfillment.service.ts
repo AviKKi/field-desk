@@ -1,3 +1,4 @@
+import { ShipmentQuantity } from './fulfillment.model.js';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { OrdersRepository } from '../orders/orders.repository.js';
@@ -127,8 +128,9 @@ export class FulfillmentService {
       const delivered = this.fulfillmentRepository.deliveredForShipmentLine(
         line.id,
       );
-      if (item.qty > line.dispatched_qty - delivered)
-        fail('QUANTITY_EXCEEDED', 'Delivery exceeds the dispatched quantity');
+      new ShipmentQuantity(line.dispatched_qty, delivered).assertDeliverable(
+        item.qty,
+      );
       const deliveryId = randomUUID();
       this.fulfillmentRepository.insertDelivery(c, {
         id: deliveryId,
@@ -362,19 +364,17 @@ export class FulfillmentService {
   forOrder(orderId: string) {
     if (!this.ordersRepository.findById(orderId))
       throw new NotFoundException('Order not found');
-    return this.fulfillmentRepository
-      .forOrder(orderId)
-      .map((shipment) => ({
-        ...shipment,
-        lines: this.fulfillmentRepository
-          .linesForShipment(shipment.id)
-          .map((line) => ({
-            ...line,
-            delivered: this.fulfillmentRepository.deliveredForShipmentLine(
-              line.id,
-            ),
-            returned: this.returnsRepository.returnedForShipmentLine(line.id),
-          })),
-      }));
+    return this.fulfillmentRepository.forOrder(orderId).map((shipment) => ({
+      ...shipment,
+      lines: this.fulfillmentRepository
+        .linesForShipment(shipment.id)
+        .map((line) => ({
+          ...line,
+          delivered: this.fulfillmentRepository.deliveredForShipmentLine(
+            line.id,
+          ),
+          returned: this.returnsRepository.returnedForShipmentLine(line.id),
+        })),
+    }));
   }
 }

@@ -1,3 +1,4 @@
+import { CreditBalance } from './credits.model.js';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { CustomersRepository } from '../customers/customers.repository.js';
@@ -67,12 +68,11 @@ export class CreditsService {
     );
     if (!note)
       fail('CREDIT_NOT_FOUND', 'Select a credit belonging to this customer');
-    const available =
-      note.amount_paise -
-      this.creditsRepository.appliedFromCredit(note.id) -
-      this.creditsRepository.refundedFromCredit(note.id);
-    if (p.amountPaise > available)
-      fail('CREDIT_EXCEEDED', 'The application exceeds the open credit');
+    new CreditBalance(
+      note.amount_paise,
+      this.creditsRepository.appliedFromCredit(note.id),
+      this.creditsRepository.refundedFromCredit(note.id),
+    ).assertAvailable(p.amountPaise, 'application');
     const charge = this.accountsRepository.findCustomerCharge(
       p.chargeId,
       c.customerId,
@@ -106,12 +106,11 @@ export class CreditsService {
     );
     if (!note)
       fail('CREDIT_NOT_FOUND', 'Select a credit belonging to this customer');
-    const available =
-      note.amount_paise -
-      this.creditsRepository.appliedFromCredit(note.id) -
-      this.creditsRepository.refundedFromCredit(note.id);
-    if (p.amountPaise > available)
-      fail('CREDIT_EXCEEDED', 'The refund exceeds the open credit');
+    new CreditBalance(
+      note.amount_paise,
+      this.creditsRepository.appliedFromCredit(note.id),
+      this.creditsRepository.refundedFromCredit(note.id),
+    ).assertAvailable(p.amountPaise, 'refund');
     let remaining = p.amountPaise;
     for (const fund of this.creditsRepository.fundsForCredit(note.id)) {
       const free =

@@ -19,3 +19,5 @@ export const crmBusinessEvents = sqliteTable(
   },
   (t) => [index('business_events_customer_id_idx').on(t.customer_id)],
 );
+
+export type BusinessEvent = typeof crmBusinessEvents.$inferSelect;

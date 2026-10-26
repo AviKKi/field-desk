@@ -30,3 +30,5 @@ export const publicUserColumns = {
   active: users.active,
   createdAt: users.createdAt,
 };
+
+export type UserRecord = typeof users.$inferSelect;

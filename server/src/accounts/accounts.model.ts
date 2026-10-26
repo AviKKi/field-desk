@@ -1,3 +1,4 @@
+import { safe } from '../common/domain.js';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -86,3 +87,19 @@ export const crmPaymentAllocations = sqliteTable(
     ),
   ],
 );
+
+export type Receipt = typeof crmPaymentReceipts.$inferSelect;
+export type ReceivableEntry = typeof crmReceivableEntries.$inferSelect;
+export class ChargeBalance {
+  constructor(
+    readonly retainedPaise: number,
+    readonly cashPaise: number,
+    readonly creditPaise: number,
+    readonly points: number,
+  ) {}
+  get outstandingPaise() {
+    return safe(
+      this.retainedPaise - this.cashPaise - this.creditPaise - this.points,
+    );
+  }
+}

@@ -1169,4 +1169,46 @@ describe('CRM operations', { concurrency: false }, () => {
         .send({})
         .expect(404);
   });
+  it('serves domain read routes consistently with the customer and order views', async () => {
+    const prepared = fixture('paid-return');
+    const order = crm
+      .bootstrap(admin)
+      .orders.find((row) => row.customer_id === prepared.customerId)!;
+    const login = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: admin.email, password: 'operations-test-password' })
+      .expect(200);
+    const cookie = (
+      login.headers['set-cookie'] as unknown as string[]
+    )[0]!.split(';')[0]!;
+    const read = async (path: string) =>
+      (
+        await request(app.getHttpServer())
+          .get(`/api/crm/${path}`)
+          .set('Cookie', cookie)
+          .expect(200)
+      ).body as unknown;
+    assert.deepEqual(
+      await read(`customers/${prepared.customerId}`),
+      crm.summary(prepared.customerId).customer,
+    );
+    assert.deepEqual(
+      await read(`orders/${order.id}/shipments`),
+      crm.detail(order.id).shipments,
+    );
+    assert.deepEqual(
+      await read(`customers/${prepared.customerId}/returns`),
+      crm.ledger(prepared.customerId).returns,
+    );
+    const credits = (await read(
+      `customers/${prepared.customerId}/credits`,
+    )) as Array<{ id: string; availablePaise: number }>;
+    assert.equal(credits[0]!.availablePaise, 8000);
+    const rewards = (await read(
+      `customers/${prepared.customerId}/rewards`,
+    )) as { points: unknown; entries: unknown };
+    assert.deepEqual(rewards.points, crm.summary(prepared.customerId).points);
+    assert.deepEqual(rewards.entries, crm.ledger(prepared.customerId).rewards);
+    assert.deepEqual(await read('catalog'), crm.bootstrap(admin).skus);
+  });
 });

@@ -4,11 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { User } from '@crm/shared';
-import type {
-  ActionResult,
-  EventRow,
-  AccountReview,
-} from '@crm/shared/crm';
+import type { ActionResult, EventRow, AccountReview } from '@crm/shared/crm';
 import { BUSINESS_TERMS_VERSION } from '@crm/shared/crm';
 import { AccountsRepository } from '../accounts/accounts.repository.js';
 import { OrdersRepository } from '../orders/orders.repository.js';

@@ -1,3 +1,4 @@
+import { fail } from '../common/domain.js';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -128,3 +129,19 @@ export const crmCorrections = sqliteTable(
     ),
   ],
 );
+
+export type ShipmentRecord = typeof crmShipments.$inferSelect;
+export type ShipmentLineRecord = typeof crmShipmentLines.$inferSelect;
+export class ShipmentQuantity {
+  constructor(
+    readonly dispatched: number,
+    readonly delivered: number,
+  ) {}
+  get awaitingDelivery() {
+    return this.dispatched - this.delivered;
+  }
+  assertDeliverable(qty: number) {
+    if (qty > this.awaitingDelivery)
+      fail('QUANTITY_EXCEEDED', 'Delivery exceeds the dispatched quantity');
+  }
+}

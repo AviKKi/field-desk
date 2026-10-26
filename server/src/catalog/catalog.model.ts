@@ -21,3 +21,5 @@ export const crmSkus = sqliteTable(
     ),
   ],
 );
+
+export type Product = typeof crmSkus.$inferSelect;

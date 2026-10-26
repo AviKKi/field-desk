@@ -1,3 +1,4 @@
+import { fail } from '../common/domain.js';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -66,3 +67,25 @@ export const crmReturnLines = sqliteTable(
     ),
   ],
 );
+
+export type ReturnRecord = typeof crmReturns.$inferSelect;
+export class ReturnQuantity {
+  constructor(
+    readonly delivered: number,
+    readonly returned: number,
+  ) {}
+  get returnable() {
+    return this.delivered - this.returned;
+  }
+  assertReturnable(qty: number) {
+    if (qty > this.returnable)
+      fail('RETURN_EXCEEDED', 'The return exceeds delivered, unreturned units');
+  }
+  static assertFee(grossPaise: number, feePaise: number) {
+    if (feePaise > grossPaise)
+      fail(
+        'FEE_EXCEEDED',
+        'The deduction cannot exceed the returned goods value',
+      );
+  }
+}

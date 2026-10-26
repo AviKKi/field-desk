@@ -18,3 +18,5 @@ export const crmActionRequests = sqliteTable(
     ),
   ],
 );
+
+export type ActionRequest = typeof crmActionRequests.$inferSelect;

@@ -15,3 +15,5 @@ export const sessions = sqliteTable(
     index('sessions_expires_at_idx').on(table.expiresAt),
   ],
 );
+
+export type Session = typeof sessions.$inferSelect;

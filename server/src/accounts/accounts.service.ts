@@ -1,3 +1,5 @@
+import { ChargeBalance } from './accounts.model.js';
+import { CreditBalance } from '../credits/credits.model.js';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type {
@@ -108,9 +110,12 @@ export class AccountsService {
           ...charge,
           remainingPaise,
           cashPaidPaise,
-          outstandingPaise: safe(
-            remainingPaise - cashPaidPaise - credit - redeemed,
-          ),
+          outstandingPaise: new ChargeBalance(
+            remainingPaise,
+            cashPaidPaise,
+            credit,
+            redeemed,
+          ).outstandingPaise,
         };
       });
     const credits = this.creditsRepository
@@ -124,7 +129,11 @@ export class AccountsService {
           ...note,
           appliedPaise,
           refundedPaise,
-          availablePaise: note.amount_paise - appliedPaise - refundedPaise,
+          availablePaise: new CreditBalance(
+            note.amount_paise,
+            appliedPaise,
+            refundedPaise,
+          ).availablePaise,
         };
       });
     const receipts = this.accountsRepository.receiptsByInsertion(customerId);

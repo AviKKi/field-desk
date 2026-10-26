@@ -1,3 +1,4 @@
+import { fail, safe } from '../common/domain.js';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -123,3 +124,19 @@ export const crmCreditRefunds = sqliteTable(
     ),
   ],
 );
+
+export type CreditNote = typeof crmCreditNotes.$inferSelect;
+export class CreditBalance {
+  constructor(
+    readonly issuedPaise: number,
+    readonly appliedPaise: number,
+    readonly refundedPaise: number,
+  ) {}
+  get availablePaise() {
+    return safe(this.issuedPaise - this.appliedPaise - this.refundedPaise);
+  }
+  assertAvailable(amountPaise: number, operation: 'application' | 'refund') {
+    if (amountPaise > this.availablePaise)
+      fail('CREDIT_EXCEEDED', `The ${operation} exceeds the open credit`);
+  }
+}

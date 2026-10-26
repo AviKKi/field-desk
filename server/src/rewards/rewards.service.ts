@@ -1,3 +1,4 @@
+import { RewardEntitlement } from './rewards.model.js';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { CustomersRepository } from '../customers/customers.repository.js';
@@ -84,13 +85,13 @@ export class RewardsService {
         const returnedQty = this.returnsRepository.returnedForLine(
           lineRow.line_key,
         );
-        const entitled =
-          orderRow.status === 'APPROVED'
-            ? safe(
-                Math.max(0, lineRow.qty - canceledQty - returnedQty) *
-                  lineRow.points_per_unit,
-              )
-            : 0;
+        const entitled = RewardEntitlement.retained(
+          orderRow.status === 'APPROVED',
+          lineRow.qty,
+          canceledQty,
+          returnedQty,
+          lineRow.points_per_unit,
+        );
         let earned = 0;
         for (const chargeRow of this.accountsRepository.chargesForLine(
           lineRow.line_key,
@@ -100,9 +101,10 @@ export class RewardsService {
           );
           earned = safe(
             earned +
-              Number(
-                (BigInt(qualifyingCash) * BigInt(lineRow.points_per_unit)) /
-                  BigInt(lineRow.unit_price_paise),
+              RewardEntitlement.cashEarned(
+                qualifyingCash,
+                lineRow.points_per_unit,
+                lineRow.unit_price_paise,
               ),
           );
         }

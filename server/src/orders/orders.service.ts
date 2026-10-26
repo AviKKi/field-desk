@@ -18,7 +18,7 @@ import {
   safe,
   distinct,
 } from '../common/domain.js';
-import { fulfillmentState } from './orders.model.js';
+import { fulfillmentState, OrderModel } from './orders.model.js';
 
 @Injectable()
 export class OrdersService {
@@ -75,16 +75,10 @@ export class OrdersService {
   edit(c: Context, p: Payload<'EDIT_ORDER'>) {
     authorize(c, 'SALES', 'ADMIN');
     const order = useOrder(c, this.ordersRepository.findById(p.orderId));
-    if (this.fulfillmentRepository.dispatchedCount(order.id))
-      fail(
-        'ORDER_DISPATCHED',
-        'Dispatched orders require an authorized shipment correction',
-      );
-    if (
-      order.status === 'CANCELLED' ||
-      this.ordersRepository.cancellationCount(order.id)
-    )
-      fail('ORDER_CANCELLED', 'Canceled quantities cannot be edited');
+    new OrderModel(order).assertEditable(
+      Boolean(this.fulfillmentRepository.dispatchedCount(order.id)),
+      Boolean(this.ordersRepository.cancellationCount(order.id)),
+    );
     const existing = this.ordersRepository.currentLines(
       order.id,
       order.current_revision,
@@ -143,8 +137,7 @@ export class OrdersService {
   submit(c: Context, p: Payload<'SUBMIT_ORDER'>) {
     authorize(c, 'SALES', 'ADMIN');
     const order = useOrder(c, this.ordersRepository.findById(p.orderId));
-    if (!['DRAFT', 'REJECTED', 'REAPPROVAL_REQUIRED'].includes(order.status))
-      fail('ORDER_STATE', 'This order is not awaiting submission');
+    new OrderModel(order).assertSubmittable();
     this.ordersRepository.updateOrder(c, order.id, {
       status:
         order.status === 'REAPPROVAL_REQUIRED'
@@ -155,10 +148,7 @@ export class OrdersService {
   approve(c: Context, p: Payload<'APPROVE_ORDER'>) {
     authorize(c, 'KAM', 'ADMIN');
     const order = useOrder(c, this.ordersRepository.findById(p.orderId));
-    if (!['PENDING', 'REAPPROVAL_REQUIRED'].includes(order.status))
-      fail('ORDER_STATE', 'Submit the current revision for approval first');
-    if (p.revision !== order.current_revision)
-      fail('REVISION_CONFLICT', 'Approve the current commercial revision');
+    new OrderModel(order).assertReviewable(p.revision, 'APPROVED');
     this.ordersRepository.insertApproval(c, {
       id: randomUUID(),
       order_id: order.id,
@@ -192,10 +182,7 @@ export class OrdersService {
   reject(c: Context, p: Payload<'REJECT_ORDER'>) {
     authorize(c, 'KAM', 'ADMIN');
     const order = useOrder(c, this.ordersRepository.findById(p.orderId));
-    if (!['PENDING', 'REAPPROVAL_REQUIRED'].includes(order.status))
-      fail('ORDER_STATE', 'The order is not awaiting approval');
-    if (p.revision !== order.current_revision)
-      fail('REVISION_CONFLICT', 'Review the current commercial revision');
+    new OrderModel(order).assertReviewable(p.revision, 'REJECTED');
     this.ordersRepository.insertApproval(c, {
       id: randomUUID(),
       order_id: order.id,
