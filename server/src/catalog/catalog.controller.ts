@@ -1,9 +1,9 @@
 import { Controller, Get } from '@nestjs/common';
-import { CatalogService } from './catalog.service.js';
+import { CatalogRepository } from './catalog.repository.js';
 @Controller('crm/catalog')
 export class CatalogController {
-  constructor(private readonly service: CatalogService) {}
+  constructor(private readonly repository: CatalogRepository) {}
   @Get() list() {
-    return this.service.list();
+    return this.repository.list();
   }
 }
