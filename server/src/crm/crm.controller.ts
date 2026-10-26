@@ -55,6 +55,10 @@ export class CrmController {
   bootstrap(@CurrentUser() user: User) {
     return this.crm.bootstrap(user);
   }
+  @Get('accounts')
+  accounts() {
+    return this.crm.accounts();
+  }
   @Post('actions')
   actions(
     @Body(new ZodValidationPipe(actionEnvelopeSchema)) input: ActionEnvelope,

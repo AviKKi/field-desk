@@ -31,6 +31,7 @@ import type {
   SavedWorkflow,
   AccountReview,
   CustomerSnapshot,
+  CustomerAccountRow,
 } from '@crm/shared/crm';
 import { DatabaseService } from '../database/database.service.js';
 
@@ -404,6 +405,9 @@ export class CrmService {
               explanation: `${actor.name} (${actor.role}) requested ${envelope.command.type} against version ${aggregate.version}. Business terms ${BUSINESS_TERMS_VERSION}.`,
             });
             switch (envelope.command.type) {
+              case 'UPDATE_CUSTOMER':
+                this.updateCustomer(c, envelope.command.payload);
+                break;
               case 'PUNCH_ORDER':
                 this.punch(c, envelope.command.payload);
                 break;
@@ -539,6 +543,18 @@ export class CrmService {
       },
       { behavior: 'immediate' },
     );
+  }
+
+  private updateCustomer(c: Context, p: Payload<'UPDATE_CUSTOMER'>) {
+    this.authorize(c, 'ADMIN', 'SALES', 'ACCOUNTS');
+    this.customer(c, p.customerId);
+    if (
+      this.one(
+        sql`select id from customers where code=${p.code} and id!=${p.customerId}`,
+      )
+    )
+      fail('CUSTOMER_CODE_EXISTS', 'Another customer already uses this code');
+    this.change(c, 'customers', p.customerId, { name: p.name, code: p.code });
   }
 
   private punch(c: Context, p: Payload<'PUNCH_ORDER'>) {
@@ -2583,6 +2599,23 @@ export class CrmService {
         created_at: c.now,
       });
     }
+  }
+
+  accounts(): CustomerAccountRow[] {
+    return this.database.db.transaction(() =>
+      this.all<Customer>(sql`select * from customers order by name`).map(
+        (customer) => {
+          const summary = this.summary(customer.id);
+          return {
+            customer,
+            netBalancePaise: summary.netBalancePaise,
+            outstandingPaise: summary.outstandingPaise,
+            unappliedCashPaise: summary.unappliedCashPaise,
+            creditsOpenPaise: summary.creditsOpenPaise,
+          };
+        },
+      ),
+    );
   }
 
   bootstrap(user: User): CrmBootstrap {

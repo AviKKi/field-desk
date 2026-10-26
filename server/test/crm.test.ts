@@ -1259,4 +1259,78 @@ describe('CRM operations', { concurrency: false }, () => {
     );
     assert.ok(crm.review(customerId).checks.every((check) => check.passed));
   });
+  it('updates customer details with role, version, uniqueness, and audit enforcement', () => {
+    const customer = crm.createCustomer(admin, {
+      name: 'Before edit',
+      code: randomUUID(),
+    });
+    const other = crm.createCustomer(admin, {
+      name: 'Another account',
+      code: randomUUID(),
+    });
+    const sales = crm
+      .bootstrap(admin)
+      .actors.find((row) => row.role === 'SALES')!;
+    const warehouse = crm
+      .bootstrap(admin)
+      .actors.find((row) => row.role === 'WAREHOUSE')!;
+    const command: CrmCommand = {
+      type: 'UPDATE_CUSTOMER',
+      payload: {
+        customerId: customer.id,
+        name: 'After edit',
+        code: 'EDIT-' + randomUUID().slice(0, 8),
+      },
+    };
+    const result = run(command, sales, 0);
+    assert.equal(result.status, 'APPLIED');
+    assert.equal(crm.summary(customer.id).customer.name, 'After edit');
+    assert.equal(
+      crm.customerTimeline(customer.id).at(-1)!.type,
+      'UPDATE_CUSTOMER',
+    );
+    assert.equal(run(command, sales, 0).status, 'CONFLICT');
+    assert.equal(run(command, warehouse).errors[0]?.code, 'FORBIDDEN');
+    assert.equal(
+      run(
+        { ...command, payload: { ...command.payload, code: other.code } },
+        sales,
+      ).errors[0]?.code,
+      'CUSTOMER_CODE_EXISTS',
+    );
+    assert.equal(crm.summary(customer.id).customer.code, command.payload.code);
+    const change = result.effects.find(
+      (effect) =>
+        effect.entity === 'customers' &&
+        (effect.after as { name?: string }).name === 'After edit',
+    )!;
+    assert.equal((change.before as { name: string }).name, 'Before edit');
+  });
+
+  it('serves account balances through the authenticated account table endpoint', async () => {
+    const login = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: admin.email, password: 'operations-test-password' })
+      .expect(200);
+    const cookies = login.headers['set-cookie'] as unknown as string[];
+    const response = await request(app.getHttpServer())
+      .get('/api/crm/accounts')
+      .set('Cookie', cookies[0]!.split(';')[0]!)
+      .expect(200);
+    const rows = response.body as Array<{
+      customer: { id: string };
+      netBalancePaise: number;
+      outstandingPaise: number;
+      unappliedCashPaise: number;
+      creditsOpenPaise: number;
+    }>;
+    for (const row of rows) {
+      const summary = crm.summary(row.customer.id);
+      assert.equal(row.netBalancePaise, summary.netBalancePaise);
+      assert.equal(row.outstandingPaise, summary.outstandingPaise);
+      assert.equal(row.unappliedCashPaise, summary.unappliedCashPaise);
+      assert.equal(row.creditsOpenPaise, summary.creditsOpenPaise);
+    }
+    await request(app.getHttpServer()).get('/api/crm/accounts').expect(401);
+  });
 });

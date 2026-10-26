@@ -22,6 +22,11 @@ const action = <T extends string, S extends z.ZodRawShape>(
 ) => z.object({ type: z.literal(type), payload: z.object(payload).strict() });
 
 export const crmActionSchema = z.discriminatedUnion('type', [
+  action('UPDATE_CUSTOMER', {
+    customerId: id,
+    name: z.string().trim().min(2).max(120),
+    code: z.string().trim().min(2).max(40),
+  }),
   action('PUNCH_ORDER', {
     customerId: id,
     items: lines,
@@ -190,6 +195,13 @@ export interface Customer {
   code: string;
   name: string;
   version: number;
+}
+export interface CustomerAccountRow {
+  customer: Customer;
+  netBalancePaise: number;
+  outstandingPaise: number;
+  unappliedCashPaise: number;
+  creditsOpenPaise: number;
 }
 export interface Sku {
   id: string;
