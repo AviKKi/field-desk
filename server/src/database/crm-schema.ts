@@ -8,3 +8,4 @@ export * from '../credits/credits.model.js';
 export * from '../rewards/rewards.model.js';
 export * from '../audit/audit.model.js';
 export * from '../scripts/seed.model.js';
+export * from '../actions/actions.model.js';
