@@ -35,14 +35,12 @@ describe('Local CRM dataset', { concurrency: false }, () => {
     database = app.get(DatabaseService);
     migrate(database.db, { migrationsFolder: resolve('drizzle') });
     crm = app.get(CrmService);
-    admin = await app
-      .get(UsersService)
-      .create({
-        name: 'Seed Administrator',
-        email: 'seed@example.test',
-        password: 'seed-test-passphrase',
-        role: 'ADMIN',
-      });
+    admin = await app.get(UsersService).create({
+      name: 'Seed Administrator',
+      email: 'seed@example.test',
+      password: 'seed-test-passphrase',
+      role: 'ADMIN',
+    });
   });
   after(async () => {
     if (app) await app.close();
@@ -176,14 +174,12 @@ describe('Local CRM dataset', { concurrency: false }, () => {
       name: 'User-created account',
       code: 'MANUAL-ACCOUNT',
     });
-    const other = await app
-      .get(UsersService)
-      .create({
-        name: 'Another Administrator',
-        email: 'another-seed@example.test',
-        password: 'another-test-passphrase',
-        role: 'ADMIN',
-      });
+    const other = await app.get(UsersService).create({
+      name: 'Another Administrator',
+      email: 'another-seed@example.test',
+      password: 'another-test-passphrase',
+      role: 'ADMIN',
+    });
     const before = counts();
     const ledgers = seeded.customers.map((row) => crm.ledger(row.id));
     const again = seedDevelopmentData(database, crm, other);
