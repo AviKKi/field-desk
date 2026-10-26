@@ -1,3 +1,4 @@
+import { AuthRepositoryModule } from './auth.repository.js';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -8,6 +9,7 @@ import { AuthService } from './auth.service.js';
 
 @Module({
   imports: [
+    AuthRepositoryModule,
     UsersModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
