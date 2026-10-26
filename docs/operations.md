@@ -30,6 +30,8 @@ For returns, credit applications, and point redemptions, **Send competing reques
 
 Administrators can select a workflow and choose **Start workflow**, then **Next step** to inspect each activity. **Run workflow** completes the remaining activities, or starts a fresh customer case when there is no active workflow. Selecting an item in **Workflow activity** opens its result and posting changes.
 
+**Open a saved workflow** reopens an earlier run, including its recorded activities and current customer balances. The selected workflow is included in the page URL, so refreshing or reopening that URL restores it without replaying completed activities. Only the administrator who started it can reopen or advance it.
+
 Some workflows include an expected rejection or request for missing physical details. These results appear in the same activity list as successful operations. For an ordinary correction submitted through the form, choose the actual dispatch from the returned options, review the retained inputs, and submit again.
 
 **Reset data** explicitly deletes CRM transactions and sample workflow history and reloads the sample customers. It requires confirmation, retains staff accounts, and is available only to local administrators. Sample loading and workflow execution are also disabled in production.

@@ -67,6 +67,8 @@ Action responses contain `status`, `actionId`, `errors`, `decisions`, `effects`,
 | POST   | `/crm/seed`              | Add catalog, customers, and staff desks without deleting transactions |
 | POST   | `/crm/reset`             | Reset with `{ "confirmation": "RESET CRM DATA" }`                     |
 | POST   | `/crm/scenarios/:id/run` | Run a complete sample workflow                                        |
+| GET    | `/crm/samples`           | List the current administrator’s most recent 50 saved workflows       |
+| GET    | `/crm/samples/:id`       | Read a saved workflow without executing activities                    |
 | POST   | `/crm/samples`           | Start `{ "scenarioId": "partial-delivery" }`                          |
 | POST   | `/crm/samples/:id/step`  | Advance the saved workflow by one activity                            |
 | POST   | `/crm/samples/:id/run`   | Complete the saved workflow                                           |

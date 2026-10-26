@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Activity,
   ArrowRight,
@@ -23,6 +24,7 @@ import type {
   LedgerView,
   OrderDetail,
   ScenarioReport,
+  SavedWorkflow,
 } from '@crm/shared/crm';
 import type { Role } from '@crm/shared';
 import { ROLE_LABELS } from '@crm/shared/roles';
@@ -198,6 +200,8 @@ function Records({ rows }: { rows: Array<Record<string, unknown>> }) {
 
 export function OperationsPage() {
   const user = useAuthStore((state) => state.user)!;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const savedRunId = searchParams.get('workflow') ?? '';
   const selection = useCrmStore();
   const [bootstrap, setBootstrap] = useState<CrmBootstrap | null>(null);
   const [summary, setSummary] = useState<CustomerSummary | null>(null);
@@ -205,11 +209,14 @@ export function OperationsPage() {
   const [ledger, setLedger] = useState<LedgerView | null>(null);
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState('');
-  const [pending, setPending] = useState(false);
+  const [saving, setPending] = useState(false);
+  const [sampleLoading, setSampleLoading] = useState(false);
+  const pending = saving || sampleLoading;
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [competingResults, setCompetingResults] = useState<ActionResult[]>([]);
   const [report, setReport] = useState<ScenarioReport | null>(null);
+  const [savedWorkflows, setSavedWorkflows] = useState<SavedWorkflow[]>([]);
   const [scenario, setScenario] = useState<string>(SCENARIOS[0][0]);
   const [customerDialog, setCustomerDialog] = useState(false);
   const [tab, setTab] = useState('order');
@@ -253,8 +260,44 @@ export function OperationsPage() {
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
+    if (user.role === 'ADMIN') {
+      void api<SavedWorkflow[]>('/crm/samples', { signal: controller.signal })
+        .then(setSavedWorkflows)
+        .catch((failure: unknown) => {
+          if (!controller.signal.aborted) setError(errorMessage(failure));
+        });
+    } else setSavedWorkflows([]);
     return () => controller.abort();
-  }, [revision]);
+  }, [revision, user.role]);
+  useEffect(() => {
+    if (!savedRunId || user.role !== 'ADMIN') {
+      setSampleLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setSampleLoading(true);
+    setError('');
+    void api<ScenarioReport>(`/crm/samples/${encodeURIComponent(savedRunId)}`, {
+      signal: controller.signal,
+    })
+      .then((value) => {
+        setReport(value);
+        setScenario(value.id);
+        setResult(value.steps.at(-1)?.result ?? null);
+        setCompetingResults([]);
+        lastEnvelope.current = null;
+        lastRequestResult.current = '';
+        useCrmStore.getState().selectCustomer(value.customerId);
+        setRevision((current) => current + 1);
+      })
+      .catch((failure: unknown) => {
+        if (!controller.signal.aborted) setError(errorMessage(failure));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSampleLoading(false);
+      });
+    return () => controller.abort();
+  }, [savedRunId, user.role]);
   useEffect(() => {
     if (!customerId) {
       setSummary(null);
@@ -510,6 +553,8 @@ export function OperationsPage() {
             method: 'POST',
           });
         setReport(value);
+        if (value.runId)
+          setSearchParams({ workflow: value.runId }, { replace: true });
         selection.selectCustomer(value.customerId);
         setResult(value.steps.at(-1)?.result ?? null);
       } else {
@@ -522,6 +567,7 @@ export function OperationsPage() {
         if (kind === 'reset') {
           setResult(null);
           setReport(null);
+          setSearchParams({}, { replace: true });
           selection.selectCustomer('');
           lastEnvelope.current = null;
         }
@@ -607,6 +653,8 @@ export function OperationsPage() {
                 onChange={(event) => {
                   selection.selectCustomer(event.target.value);
                   setResult(null);
+                  setReport(null);
+                  setSearchParams({}, { replace: true });
                 }}
               >
                 <option value="" disabled>
@@ -682,12 +730,45 @@ export function OperationsPage() {
             onChange={(event) => {
               setScenario(event.target.value);
               setReport(null);
+              setSearchParams({}, { replace: true });
             }}
             disabled={pending}
           >
             {SCENARIOS.map(([id, label]) => (
               <option key={id} value={id}>
                 {label}
+              </option>
+            ))}
+          </NativeSelect>
+          <NativeSelect
+            aria-label="Saved workflow"
+            value={savedRunId}
+            disabled={pending}
+            className="max-w-full"
+            onChange={(event) =>
+              setSearchParams(
+                event.target.value ? { workflow: event.target.value } : {},
+                { replace: true },
+              )
+            }
+          >
+            <option value="">Open a saved workflow</option>
+            {savedRunId &&
+              report?.runId === savedRunId &&
+              !savedWorkflows.some(
+                (workflow) => workflow.id === savedRunId,
+              ) && (
+                <option value={savedRunId}>
+                  Current workflow · {report.steps.length} steps
+                </option>
+              )}
+            {savedWorkflows.map((workflow) => (
+              <option key={workflow.id} value={workflow.id}>
+                {SCENARIOS.find(([id]) => id === workflow.scenarioId)?.[1] ??
+                  workflow.scenarioId}{' '}
+                · {workflow.stepCount} steps ·{' '}
+                {workflow.complete ? 'Complete' : 'In progress'} ·{' '}
+                {new Date(workflow.createdAt).toLocaleString()}
               </option>
             ))}
           </NativeSelect>
