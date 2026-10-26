@@ -35,6 +35,8 @@ Roles are `SALES`, `KAM`, `WAREHOUSE`, `ACCOUNTS`, and `ADMIN`. Public user fiel
 | GET    | `/crm/actions/:id/trace`      | Recorded action result; requester, actor, or Admin only                |
 | POST   | `/crm/customers`              | Create `{ name, code }`; Sales, Accounts, or Admin                     |
 
+Additional domain read routes are `GET /crm/catalog`, `GET /crm/orders`, `GET /crm/customers/:id`, `GET /crm/orders/:orderId/shipments`, and `GET /crm/customers/:customerId/returns`, `/credits`, and `/rewards`. These require authentication. Existing bootstrap, detail, ledger, and action routes retain their contracts.
+
 The signed-in user's active role governs operations. Only an Admin may choose another active staff member through `actorId`; the submitted payload cannot grant that staff member a different role.
 
 ## Activities

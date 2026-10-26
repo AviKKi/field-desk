@@ -64,7 +64,7 @@ API tests use temporary SQLite files, real migrations, NestJS, and HTTP requests
 
 ## Changes
 
-Keep browser code out of `server` and server code out of `shared`. Shared contracts are consumed through package exports, never by importing another package’s source. Place business logic in providers and keep controllers focused on HTTP. Submit the relevant check results with changes.
+Keep browser code out of `server` and server code out of `shared`. Shared contracts are consumed through package exports, never by importing another package’s source. Keep domain models, repositories, services, and controllers within their owning backend module. Put invariants and value calculations in models, database access in typed Drizzle repositories, and cross-domain coordination in services. Controllers stay focused on HTTP. Cross-domain reads can import the owning repository module; avoid circular service dependencies. Schema export barrels are for Drizzle tooling and compatibility. Submit the relevant check results with changes.
 
 ## Related
 

@@ -2,6 +2,44 @@
 
 The repository uses sibling pnpm packages for the React client, NestJS API, and shared contracts. CRM navigation uses separate list, detail, and form routes. Zustand holds the acting staff selection in memory; fetched records are held by the route data hooks.
 
+## Backend modules
+
+Each backend domain keeps its model, repository, service, controller, and Nest module together:
+
+```text
+server/src/
+  customers/      Customer records and account identity
+  catalog/        Product reference data
+  orders/         Commercial orders, revisions, approvals, cancellations
+  fulfillment/    Loading, dispatch, delivery, authorized corrections
+  returns/        Physical returns and associated adjustments
+  accounts/       Receivables, customer receipts, cash allocation, balances
+  credits/        Credit funding, applications, refunds, reversals
+  rewards/        Entitlement, locked points, redemption, recovery
+  actions/        Request validation, versions, idempotency, transactions
+  audit/          Posting provenance, activity history, consistency checks
+  users/          Staff accounts, passwords, access changes
+  auth/           Login, JWT cookies, persisted sessions
+  crm/            Bootstrap and customer snapshot composition
+  health/         Database readiness
+  workspace/      Role-specific workspace descriptions
+  database/       Connection, migration runner, schema export barrels
+  scripts/        Administrator creation and CLI-only local seeding
+```
+
+For example, `orders/` contains `orders.model.ts`, `orders.repository.ts`, `orders.service.ts`, `orders.controller.ts`, and `orders.module.ts`.
+
+- **Models** define typed entities and value objects, schema mappings, and local invariants. Order transitions, deliverable/returnable quantities, credit availability, cash-funded reward rounding, and charge balances have explicit model behavior.
+- **Repositories** own database reads and writes using typed Drizzle tables, joins, predicates, aggregates, inserts, and updates. Repository modules expose persistence to cooperating domains without importing their business services or introducing circular service dependencies.
+- **Services** authorize operations and coordinate domain work. Cash allocation belongs to Accounts; reward entitlement updates belong to Rewards. Fulfillment and Returns call those services when a physical operation changes settlement or entitlement.
+- **Controllers** handle HTTP parameters, shared runtime validation, and authenticated actors. Domain mutations retain the common action contract; domain read controllers expose their own records.
+
+`CrmService` is a small compatibility facade used by bootstrap/snapshot endpoints, CLI seeding, and integration tests. It delegates business operations to domain services. The database schema files re-export the domain models for Drizzle tooling and existing imports; they do not own the domain table definitions.
+
+`ActionsService` owns the synchronous immediate SQLite transaction. All repositories use the same connection, so cross-domain writes participate in that transaction. A nested savepoint rolls back domain changes on rejection or an unresolved choice while retaining the request outcome for idempotency. Audit enriches the resulting typed record changes and verifies the account before commit. No service executes an assembled SQL statement.
+
+Small SQL expressions remain where Drizzle needs SQLite-specific expressions: schema constraints, insertion-order tie-breaking through `rowid`, and literal substring search. Complete SELECT, INSERT, and UPDATE statements use Drizzle's builders. Moving table declarations into models preserves the existing SQL schema and migrations.
+
 ```text
 client/src/
   components/ui/  Owned shadcn/ui-style Radix components
@@ -9,14 +47,6 @@ client/src/
   features/crm/   Record forms, account tables, and CRM data access
   store/          In-memory Zustand session state
   lib/            HTTP client and utilities
-server/src/
-  auth/           JWT cookies, database sessions, authentication and role guards
-  users/          Account creation, password hashing, admin management
-  database/       Drizzle schema, connection lifecycle, migration runner
-  crm/            Order, shipping, account, reward, and activity endpoints
-  workspace/      Sales and KAM access endpoints
-  common/         Zod validation pipe
-  config/         Validated environment configuration
 shared/src/       Zod request contracts, public response types, roles
 ```
 
