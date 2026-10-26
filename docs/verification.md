@@ -60,7 +60,7 @@ The API's live checks inspect current persisted evidence. They support transacti
 
 ## Related
 
-- [Canonical business rules](business-guide/canonical_business_rules.md)
+- [Canonical business rules](candidate-walkthrough/canonical_business_rules.md)
 - [Documentation index](README.md)
 - [Development setup](../CONTRIBUTING.md)
 - [API reference](api.md)
