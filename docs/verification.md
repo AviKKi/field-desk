@@ -41,7 +41,15 @@ Reports are generated locally and ignored by Git. Preserve their files together 
 
 ## Checkpoint
 
-`crm-v0.1.0` identifies the verified application checkpoint. Subsequent corrections should use new commits and new version tags; retain this reference for reproducing earlier behavior. The operating conventions at this checkpoint are version `2026-10-26.1`.
+Commit `7f5c5d2` preserves the verified application checkpoint. The operating conventions at this checkpoint are version `2026-10-26.1`. Subsequent corrections should use new commits; retain this reference for reproducing earlier behavior.
+
+The intended version label is `crm-v0.1.0`. Tag creation was unavailable in the restricted workspace. To attach the label locally:
+
+```sh
+git tag -a crm-v0.1.0 7f5c5d2 -m 'Verified CRM operations checkpoint'
+```
+
+The reference commit contains the complete application changes, independent tests, source metrics command, and operating documentation. Later documentation corrections do not change that implementation.
 
 ## Limits
 
