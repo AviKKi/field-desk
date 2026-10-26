@@ -219,6 +219,14 @@ export interface OrderListRow {
   version: number;
   created_at: string;
   totalPaise?: number;
+  fulfillmentStatus?:
+    | 'UNFULFILLED'
+    | 'LOADING'
+    | 'PARTIALLY_DISPATCHED'
+    | 'DISPATCHED'
+    | 'PARTIALLY_DELIVERED'
+    | 'DELIVERED'
+    | 'CANCELLED';
 }
 export interface OrderLine {
   lineKey: string;

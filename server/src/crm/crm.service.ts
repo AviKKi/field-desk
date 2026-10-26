@@ -2635,8 +2635,48 @@ export class CrmService {
     return {
       customers: this.all<Customer>(sql`select * from customers order by name`),
       skus: this.all<Sku>(sql`select * from skus order by code`),
-      orders: this.all<OrderListRow>(
-        sql`select o.*, (select coalesce(sum(l.qty*l.unit_price_paise),0) from order_lines l join order_revisions r on r.id=l.revision_id where r.order_id=o.id and r.revision=o.current_revision) totalPaise from orders o order by o.created_at desc,o.rowid desc`,
+      orders: this.all<
+        OrderListRow & {
+          orderedQty: number;
+          canceledQty: number;
+          loadingQty: number;
+          dispatchedQty: number;
+          deliveredQty: number;
+        }
+      >(
+        sql`select o.*,
+          (select coalesce(sum(l.qty*l.unit_price_paise),0) from order_lines l join order_revisions r on r.id=l.revision_id where r.order_id=o.id and r.revision=o.current_revision) totalPaise,
+          (select coalesce(sum(l.qty),0) from order_lines l join order_revisions r on r.id=l.revision_id where r.order_id=o.id and r.revision=o.current_revision) orderedQty,
+          (select coalesce(sum(c.qty),0) from cancellations c join order_lines l on l.line_key=c.line_key join order_revisions r on r.id=l.revision_id where c.order_id=o.id and r.order_id=o.id and r.revision=o.current_revision) canceledQty,
+          (select coalesce(sum(l.loaded_qty),0) from shipment_lines l join shipments s on s.id=l.shipment_id where s.order_id=o.id and s.status='LOADING') loadingQty,
+          (select coalesce(sum(dispatched_qty),0) from shipment_lines where order_id=o.id) dispatchedQty,
+          (select coalesce(sum(qty),0) from deliveries where order_id=o.id) deliveredQty
+          from orders o order by o.created_at desc,o.rowid desc`,
+      ).map(
+        ({
+          orderedQty,
+          canceledQty,
+          loadingQty,
+          dispatchedQty,
+          deliveredQty,
+          ...order
+        }) => ({
+          ...order,
+          fulfillmentStatus:
+            orderedQty === canceledQty
+              ? 'CANCELLED'
+              : deliveredQty >= orderedQty - canceledQty
+                ? 'DELIVERED'
+                : deliveredQty > 0
+                  ? 'PARTIALLY_DELIVERED'
+                  : dispatchedQty >= orderedQty - canceledQty
+                    ? 'DISPATCHED'
+                    : dispatchedQty > 0
+                      ? 'PARTIALLY_DISPATCHED'
+                      : loadingQty > 0
+                        ? 'LOADING'
+                        : 'UNFULFILLED',
+        }),
       ),
       actors,
     };
@@ -3261,6 +3301,7 @@ export class CrmService {
     this.database.db.transaction(() => {
       this.database.db.run(sql`delete from action_requests`);
       this.database.db.run(sql`delete from customers`);
+      this.database.db.run(sql`delete from seed_history`);
     });
     return this.seed(user);
   }

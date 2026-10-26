@@ -638,6 +638,12 @@ export const crmSampleRuns = sqliteTable('sample_runs', {
   created_at: text('created_at').notNull(),
 });
 
+export const crmSeedHistory = sqliteTable('seed_history', {
+  id: text('id').primaryKey(),
+  summary: text('summary').notNull(),
+  created_at: text('created_at').notNull(),
+});
+
 export const crmSampleSteps = sqliteTable(
   'sample_steps',
   {

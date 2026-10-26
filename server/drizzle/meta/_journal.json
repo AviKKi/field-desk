@@ -29,6 +29,13 @@
       "when": 1793018051163,
       "tag": "0003_stiff_frank_castle",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793029117163,
+      "tag": "0004_clever_nick_fury",
+      "breakpoints": true
     }
   ]
 }
