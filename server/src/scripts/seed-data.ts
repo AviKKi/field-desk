@@ -5,7 +5,23 @@ import { seedReferenceData } from './seed-reference-data.js';
 import type { User, Role } from '@crm/shared';
 import type { CrmCommand } from '@crm/shared/crm';
 import type { DatabaseService } from '../database/database.service.js';
-import type { CrmService } from '../crm/crm.service.js';
+import type { ActionsService } from '../actions/actions.service.js';
+import type { CustomersService } from '../customers/customers.service.js';
+import type { OrdersService } from '../orders/orders.service.js';
+import type { AccountsService } from '../accounts/accounts.service.js';
+import type { AuditService } from '../audit/audit.service.js';
+import type { UsersRepository } from '../users/users.repository.js';
+import type { CatalogRepository } from '../catalog/catalog.repository.js';
+
+export interface SeedDependencies {
+  actions: ActionsService;
+  customers: CustomersService;
+  orders: OrdersService;
+  accounts: AccountsService;
+  audit: AuditService;
+  users: UsersRepository;
+  catalog: CatalogRepository;
+}
 
 export interface SeedSummary {
   customers: Array<{ id: string; code: string }>;
@@ -15,7 +31,15 @@ const datasetId = 'crm-local-v1';
 
 export function seedDevelopmentData(
   database: DatabaseService,
-  crm: CrmService,
+  {
+    actions,
+    customers,
+    orders,
+    accounts,
+    audit,
+    users,
+    catalog: products,
+  }: SeedDependencies,
   admin: User,
 ): SeedSummary & { alreadyPresent: boolean } {
   return database.db.transaction(
@@ -32,10 +56,8 @@ export function seedDevelopmentData(
           alreadyPresent: true,
         };
       const summary: SeedSummary = { customers: [], orders: [] };
-      const actors = crm.bootstrap(admin).actors;
-      const catalog = new Map(
-        crm.bootstrap(admin).skus.map((sku) => [sku.id, sku]),
-      );
+      const actors = users.listActive();
+      const catalog = new Map(products.list().map((sku) => [sku.id, sku]));
       let position = 0;
       function apply(command: CrmCommand, role: Role) {
         const actor = actors.find((user) => user.role === role);
@@ -46,9 +68,9 @@ export function seedDevelopmentData(
         const p = command.payload;
         const expectedVersion =
           'orderId' in p
-            ? crm.detail(p.orderId).order.version
-            : crm.summary(p.customerId).customer.version;
-        const result = crm.execute(
+            ? orders.detail(p.orderId).order.version
+            : accounts.summary(p.customerId).customer.version;
+        const result = actions.execute(
           {
             command,
             actorId: actor.id,
@@ -69,7 +91,8 @@ export function seedDevelopmentData(
           .from(crmCustomers)
           .where(eq(crmCustomers.code, code))
           .get();
-        const record = existing ?? crm.createCustomer(admin, { code, name });
+        const record =
+          existing ?? customers.createCustomer(admin, { code, name });
         summary.customers.push({ id: record.id, code: record.code });
         return record.id;
       }
@@ -105,7 +128,7 @@ export function seedDevelopmentData(
         return orderId;
       }
       function load(orderId: string, quantities?: number[]) {
-        const detail = crm.detail(orderId);
+        const detail = orders.detail(orderId);
         return apply(
           {
             type: 'START_LOADING',
@@ -132,7 +155,7 @@ export function seedDevelopmentData(
           { type: 'DISPATCH_SHIPMENT', payload: { orderId, shipmentId } },
           'WAREHOUSE',
         );
-        const shipment = crm
+        const shipment = orders
           .detail(orderId)
           .shipments.find((row) => row.id === shipmentId)!;
         const confirmations = shipment.lines
@@ -149,7 +172,7 @@ export function seedDevelopmentData(
             },
             'WAREHOUSE',
           );
-        return crm
+        return orders
           .detail(orderId)
           .shipments.find((row) => row.id === shipmentId)!;
       }
@@ -167,7 +190,7 @@ export function seedDevelopmentData(
         );
       }
       function payOrder(orderId: string, reference: string) {
-        const detail = crm.detail(orderId);
+        const detail = orders.detail(orderId);
         return receipt(
           detail.order.customer_id,
           detail.lines.reduce(
@@ -178,7 +201,7 @@ export function seedDevelopmentData(
         );
       }
       function returned(orderId: string, qty: number, feePaise: number) {
-        const line = crm.detail(orderId).shipments[0]!.lines[0]!;
+        const line = orders.detail(orderId).shipments[0]!.lines[0]!;
         apply(
           {
             type: 'RECORD_RETURN',
@@ -326,7 +349,7 @@ export function seedDevelopmentData(
         [0, 6],
       );
       ship(later);
-      let account = crm.summary(metro);
+      let account = accounts.summary(metro);
       const credit = account.credits[0]!;
       const charge = account.charges.find((row) => row.outstandingPaise > 0)!;
       const applicationAmount = Math.min(
@@ -346,7 +369,7 @@ export function seedDevelopmentData(
         },
         'ACCOUNTS',
       );
-      const applicationId = crm
+      const applicationId = accounts
         .ledger(metro)
         .creditApplications.find(
           (row) => row.action_id === application.actionId,
@@ -363,7 +386,7 @@ export function seedDevelopmentData(
         },
         'ACCOUNTS',
       );
-      account = crm.summary(metro);
+      account = accounts.summary(metro);
       const refund = apply(
         {
           type: 'REFUND_CREDIT_NOTE',
@@ -376,7 +399,7 @@ export function seedDevelopmentData(
         },
         'ACCOUNTS',
       );
-      const refundRow = crm
+      const refundRow = accounts
         .ledger(metro)
         .refunds.find((row) => row.action_id === refund.actionId)!;
       apply(
@@ -405,7 +428,7 @@ export function seedDevelopmentData(
       ship(earned);
       payOrder(earned, 'NEFT-LAKE-001');
       ship(order(lake, 'Later delivery settled partly with points', [0, 2]));
-      account = crm.summary(lake);
+      account = accounts.summary(lake);
       const redeemCharge = account.charges.find(
         (row) => row.outstandingPaise > 0,
       )!;
@@ -469,7 +492,7 @@ export function seedDevelopmentData(
       ship(paid);
       payOrder(paid, 'NEFT-OAK-001');
       ship(order(oak, 'Partly paid with a points settlement', [0, 0, 2]));
-      account = crm.summary(oak);
+      account = accounts.summary(oak);
       const openCharge = account.charges.find(
         (row) => row.outstandingPaise > 0,
       )!;
@@ -491,7 +514,7 @@ export function seedDevelopmentData(
       receipt(oak, Math.max(1, Math.floor(c.price_paise / 2)), 'UPI-OAK-002');
 
       for (const customer of summary.customers) {
-        const failed = crm
+        const failed = audit
           .review(customer.id)
           .checks.filter((check) => !check.passed);
         if (failed.length)

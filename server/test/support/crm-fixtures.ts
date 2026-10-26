@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import type { User, Role } from '@crm/shared';
 import type { ActionResult, CrmCommand } from '@crm/shared/crm';
-import type { CrmService } from '../../src/crm/crm.service.js';
+import type { ActionsService } from '../../src/actions/actions.service.js';
+import type { CustomersService } from '../../src/customers/customers.service.js';
+import type { OrdersService } from '../../src/orders/orders.service.js';
+import type { AccountsService } from '../../src/accounts/accounts.service.js';
+import type { UsersRepository } from '../../src/users/users.repository.js';
 
 type Fixture =
   | 'partial-delivery'
@@ -13,13 +17,25 @@ type Fixture =
   | 'credit-settlement'
   | 'shipment-correction';
 
-export function createCrmFixture(crm: CrmService, admin: User, kind: Fixture) {
-  const customer = crm.createCustomer(admin, {
+interface FixtureDependencies {
+  actions: ActionsService;
+  customers: CustomersService;
+  orders: OrdersService;
+  accounts: AccountsService;
+  users: UsersRepository;
+}
+
+export function createCrmFixture(
+  { actions, customers, orders, accounts, users }: FixtureDependencies,
+  admin: User,
+  kind: Fixture,
+) {
+  const customer = customers.createCustomer(admin, {
     name: 'Integration customer',
     code: randomUUID(),
   });
   const customerId = customer.id;
-  const actors = crm.bootstrap(admin).actors;
+  const actors = users.listActive();
   const steps: Array<{ label: string; result: ActionResult }> = [];
   function apply(
     command: CrmCommand,
@@ -27,14 +43,14 @@ export function createCrmFixture(crm: CrmService, admin: User, kind: Fixture) {
     expected: ActionResult['status'] = 'APPLIED',
   ) {
     const payload = command.payload;
-    const result = crm.execute(
+    const result = actions.execute(
       {
         command,
         actorId: actors.find((actor) => actor.role === role)!.id,
         expectedVersion:
           'orderId' in payload
-            ? crm.detail(payload.orderId).order.version
-            : crm.summary(customerId).customer.version,
+            ? orders.detail(payload.orderId).order.version
+            : accounts.summary(customerId).customer.version,
         idempotencyKey: randomUUID(),
       },
       admin,
@@ -54,7 +70,7 @@ export function createCrmFixture(crm: CrmService, admin: User, kind: Fixture) {
     return orderId;
   }
   function ship(orderId: string, quantities?: number[]) {
-    const detail = crm.detail(orderId);
+    const detail = orders.detail(orderId);
     const loaded = apply(
       {
         type: 'START_LOADING',
@@ -75,7 +91,7 @@ export function createCrmFixture(crm: CrmService, admin: User, kind: Fixture) {
       { type: 'DISPATCH_SHIPMENT', payload: { orderId, shipmentId } },
       'WAREHOUSE',
     );
-    const lines = crm
+    const lines = orders
       .detail(orderId)
       .shipments.find((row) => row.id === shipmentId)!.lines;
     apply(
@@ -144,7 +160,7 @@ export function createCrmFixture(crm: CrmService, admin: User, kind: Fixture) {
       if (kind === 'redemption') {
         const second = order();
         ship(second);
-        const charge = crm
+        const charge = accounts
           .summary(customerId)
           .charges.find((row) => row.order_id === second)!;
         apply(
@@ -155,7 +171,7 @@ export function createCrmFixture(crm: CrmService, admin: User, kind: Fixture) {
           'ACCOUNTS',
         );
       } else {
-        const line = crm.detail(first).shipments[0]!.lines[0]!;
+        const line = orders.detail(first).shipments[0]!.lines[0]!;
         const returned = apply(
           {
             type: 'RECORD_RETURN',
@@ -171,7 +187,7 @@ export function createCrmFixture(crm: CrmService, admin: User, kind: Fixture) {
         if (kind === 'credit-settlement') {
           const second = order();
           ship(second);
-          const charge = crm
+          const charge = accounts
             .summary(customerId)
             .charges.find((row) => row.order_id === second)!;
           apply(
@@ -190,5 +206,5 @@ export function createCrmFixture(crm: CrmService, admin: User, kind: Fixture) {
       }
     }
   }
-  return { customerId, steps, summary: crm.summary(customerId) };
+  return { customerId, steps, summary: accounts.summary(customerId) };
 }

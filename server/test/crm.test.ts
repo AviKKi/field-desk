@@ -18,7 +18,13 @@ import type {
   CustomerSummary,
 } from '@crm/shared/crm';
 import { DatabaseService } from '../src/database/database.service.js';
-import { CrmService } from '../src/crm/crm.service.js';
+import { ActionsService } from '../src/actions/actions.service.js';
+import { CustomersService } from '../src/customers/customers.service.js';
+import { OrdersService } from '../src/orders/orders.service.js';
+import { AccountsService } from '../src/accounts/accounts.service.js';
+import { AuditService } from '../src/audit/audit.service.js';
+import { UsersRepository } from '../src/users/users.repository.js';
+import { CrmQueriesService } from '../src/crm-queries/crm-queries.service.js';
 import { UsersService } from '../src/users/users.service.js';
 import { configureApp } from '../src/configure-app.js';
 import { seedReferenceData } from '../src/scripts/seed-reference-data.js';
@@ -32,11 +38,21 @@ process.env.CLIENT_ORIGIN = 'http://localhost:5173';
 
 describe('CRM operations', { concurrency: false }, () => {
   let app: INestApplication,
-    crm: CrmService,
+    actions: ActionsService,
+    customers: CustomersService,
+    orders: OrdersService,
+    accounts: AccountsService,
+    audit: AuditService,
+    users: UsersRepository,
+    queries: CrmQueriesService,
     database: DatabaseService,
     admin: User;
   const fixture = (kind: Parameters<typeof createCrmFixture>[2]) =>
-    createCrmFixture(crm, admin, kind);
+    createCrmFixture(
+      { actions, customers, orders, accounts, users },
+      admin,
+      kind,
+    );
   before(async () => {
     const { AppModule } = await import('../src/app.module.js');
     const module = await Test.createTestingModule({
@@ -46,7 +62,13 @@ describe('CRM operations', { concurrency: false }, () => {
     configureApp(app);
     database = app.get(DatabaseService);
     migrate(database.db, { migrationsFolder: resolve('drizzle') });
-    crm = app.get(CrmService);
+    actions = app.get(ActionsService);
+    customers = app.get(CustomersService);
+    orders = app.get(OrdersService);
+    accounts = app.get(AccountsService);
+    audit = app.get(AuditService);
+    users = app.get(UsersRepository);
+    queries = app.get(CrmQueriesService);
     admin = await app.get(UsersService).create({
       name: 'Operations Admin',
       email: 'ops@example.test',
@@ -74,10 +96,10 @@ describe('CRM operations', { concurrency: false }, () => {
     }
     for (const credit of summary.credits) assert.ok(credit.availablePaise >= 0);
     for (const value of Object.values(summary.points)) assert.ok(value >= 0);
-    for (const order of crm
+    for (const order of queries
       .bootstrap(admin)
       .orders.filter((row) => row.customer_id === summary.customer.id)) {
-      for (const line of crm.detail(order.id).lines) {
+      for (const line of orders.detail(order.id).lines) {
         assert.ok(line.open >= 0);
         assert.ok(line.returned <= line.delivered);
         assert.ok(line.delivered <= line.dispatched);
@@ -95,15 +117,15 @@ describe('CRM operations', { concurrency: false }, () => {
     const expectedVersion =
       version ??
       ('orderId' in payload
-        ? crm.detail(payload.orderId).order.version
-        : crm.summary(payload.customerId).customer.version);
-    return crm.execute(
+        ? orders.detail(payload.orderId).order.version
+        : accounts.summary(payload.customerId).customer.version);
+    return actions.execute(
       { command, actorId: actor.id, idempotencyKey: key, expectedVersion },
       admin,
     );
   };
   it('accepts advances without charges and allocates them at delivery', () => {
-    const customer = crm.createCustomer(admin, {
+    const customer = customers.createCustomer(admin, {
       name: 'Advance customer',
       code: randomUUID(),
     });
@@ -118,8 +140,8 @@ describe('CRM operations', { concurrency: false }, () => {
       }).status,
       'APPLIED',
     );
-    assert.equal(crm.summary(customer.id).unappliedCashPaise, 15000);
-    assert.equal(crm.summary(customer.id).charges.length, 0);
+    assert.equal(accounts.summary(customer.id).unappliedCashPaise, 15000);
+    assert.equal(accounts.summary(customer.id).charges.length, 0);
     const created = run({
       type: 'PUNCH_ORDER',
       payload: {
@@ -134,12 +156,12 @@ describe('CRM operations', { concurrency: false }, () => {
       type: 'START_LOADING',
       payload: {
         orderId,
-        items: [{ lineKey: crm.detail(orderId).lines[0]!.lineKey, qty: 1 }],
+        items: [{ lineKey: orders.detail(orderId).lines[0]!.lineKey, qty: 1 }],
       },
     });
     const shipmentId = loaded.references.shipmentId!;
     run({ type: 'DISPATCH_SHIPMENT', payload: { orderId, shipmentId } });
-    const line = crm.detail(orderId).shipments[0]!.lines[0]!;
+    const line = orders.detail(orderId).shipments[0]!.lines[0]!;
     run({
       type: 'CONFIRM_DELIVERY',
       payload: {
@@ -148,7 +170,7 @@ describe('CRM operations', { concurrency: false }, () => {
         items: [{ shipmentLineId: line.id, qty: 1 }],
       },
     });
-    const summary = crm.summary(customer.id);
+    const summary = accounts.summary(customer.id);
     check(summary);
     assert.equal(summary.unappliedCashPaise, 5000);
     assert.equal(summary.points.available, 1000);
@@ -157,11 +179,11 @@ describe('CRM operations', { concurrency: false }, () => {
   it('handles partial payments, partial returns, refund limits, and credit reversals', () => {
     const report = fixture('customer-payment');
     const customerId = report.customerId;
-    const first = crm
+    const first = queries
       .bootstrap(admin)
       .orders.filter((order) => order.customer_id === customerId)
       .at(-1)!;
-    const line = crm.detail(first.id).shipments[0]!.lines[0]!;
+    const line = orders.detail(first.id).shipments[0]!.lines[0]!;
     const returned = run({
       type: 'RECORD_RETURN',
       payload: {
@@ -173,11 +195,11 @@ describe('CRM operations', { concurrency: false }, () => {
     });
     assert.equal(returned.status, 'APPLIED');
     const credit = returned.references.creditNoteId!;
-    const note = crm
+    const note = accounts
       .summary(customerId)
       .credits.find((row) => row.id === credit)!;
     assert.equal(note.amount_paise, 8000);
-    const before = crm.summary(customerId);
+    const before = accounts.summary(customerId);
     const bad = run({
       type: 'REFUND_CREDIT_NOTE',
       payload: {
@@ -188,7 +210,7 @@ describe('CRM operations', { concurrency: false }, () => {
       },
     });
     assert.equal(bad.status, 'REJECTED');
-    assert.deepEqual(crm.summary(customerId), before);
+    assert.deepEqual(accounts.summary(customerId), before);
     assert.equal(
       run({
         type: 'REFUND_CREDIT_NOTE',
@@ -201,16 +223,16 @@ describe('CRM operations', { concurrency: false }, () => {
       }).status,
       'APPLIED',
     );
-    check(crm.summary(customerId));
-    assert.equal(crm.summary(customerId).creditsOpenPaise, 5000);
+    check(accounts.summary(customerId));
+    assert.equal(accounts.summary(customerId).creditsOpenPaise, 5000);
   });
 
   it('rejects over-delivery, over-return, loading too many units, duplicate lines and stale approval without mutation', () => {
     const report = fixture('partial-delivery');
-    const order = crm
+    const order = queries
       .bootstrap(admin)
       .orders.find((row) => row.customer_id === report.customerId)!;
-    const detail = crm.detail(order.id);
+    const detail = orders.detail(order.id);
     const line = detail.shipments[0]!.lines[0]!;
     for (const command of [
       {
@@ -248,22 +270,22 @@ describe('CRM operations', { concurrency: false }, () => {
         },
       },
     ] satisfies CrmCommand[]) {
-      const before = crm.detail(order.id),
-        ledger = crm.ledger(report.customerId);
+      const before = orders.detail(order.id),
+        ledger = accounts.ledger(report.customerId);
       const result = run(command);
       assert.equal(result.status, 'REJECTED');
-      assert.deepEqual(crm.detail(order.id), before);
-      assert.deepEqual(crm.ledger(report.customerId), ledger);
+      assert.deepEqual(orders.detail(order.id), before);
+      assert.deepEqual(accounts.ledger(report.customerId), ledger);
       assert.equal(result.effects.length, 0);
     }
   });
 
   it('serializes two HTTP return requests and rejects forged actors', async () => {
     const report = fixture('second-delivery');
-    const order = crm
+    const order = queries
       .bootstrap(admin)
       .orders.find((row) => row.customer_id === report.customerId)!;
-    const line = crm.detail(order.id).shipments[0]!.lines[0]!;
+    const line = orders.detail(order.id).shipments[0]!.lines[0]!;
     const login = await request(app.getHttpServer())
       .post('/api/auth/login')
       .send({ email: admin.email, password: 'operations-test-password' })
@@ -299,11 +321,11 @@ describe('CRM operations', { concurrency: false }, () => {
         .sort(),
       ['APPLIED', 'CONFLICT'],
     );
-    const sales = crm
+    const sales = queries
       .bootstrap(admin)
       .actors.find((actor) => actor.role === 'SALES')!;
     assert.throws(() =>
-      crm.execute(
+      actions.execute(
         { ...envelope, actorId: admin.id, idempotencyKey: randomUUID() },
         sales,
       ),
@@ -343,8 +365,8 @@ describe('CRM operations', { concurrency: false }, () => {
     const report = fixture('shipment-correction');
     const customerId = report.customerId;
     const key = randomUUID();
-    const version = crm.summary(customerId).customer.version;
-    const one = crm.execute(
+    const version = accounts.summary(customerId).customer.version;
+    const one = actions.execute(
       {
         command: {
           type: 'RECEIVE_CUSTOMER_PAYMENT',
@@ -356,7 +378,7 @@ describe('CRM operations', { concurrency: false }, () => {
       admin,
     );
     assert.equal(one.status, 'APPLIED');
-    const two = crm.execute(
+    const two = actions.execute(
       {
         command: {
           type: 'RECEIVE_CUSTOMER_PAYMENT',
@@ -368,7 +390,7 @@ describe('CRM operations', { concurrency: false }, () => {
       admin,
     );
     assert.equal(two.errors[0]?.code, 'IDEMPOTENCY_CONFLICT');
-    const result = crm.execute(
+    const result = actions.execute(
       {
         command: { type: 'ALLOCATE_PAYMENT', payload: { customerId } },
         idempotencyKey: randomUUID(),
@@ -378,14 +400,14 @@ describe('CRM operations', { concurrency: false }, () => {
     assert.equal(result.errors[0]?.code, 'VERSION_REQUIRED');
     const dangling = database.db.all(sql`pragma foreign_key_check`);
     assert.deepEqual(dangling, []);
-    check(crm.summary(customerId));
+    check(accounts.summary(customerId));
   });
   it('restores an applied credit when the later goods are returned', () => {
     const report = fixture('credit-settlement');
-    const newer = crm
+    const newer = queries
       .bootstrap(admin)
       .orders.find((order) => order.customer_id === report.customerId)!;
-    const line = crm.detail(newer.id).shipments[0]!.lines[0]!;
+    const line = orders.detail(newer.id).shipments[0]!.lines[0]!;
     assert.equal(
       run({
         type: 'RECORD_RETURN',
@@ -398,14 +420,14 @@ describe('CRM operations', { concurrency: false }, () => {
       }).status,
       'APPLIED',
     );
-    const value = crm.summary(report.customerId);
+    const value = accounts.summary(report.customerId);
     check(value);
     assert.equal(value.creditsOpenPaise, 8000);
     assert.equal(value.outstandingPaise, 0);
     assert.equal(value.receivedPaise, 10000);
     assert.equal(value.points.available, 0);
     assert.ok(
-      crm
+      accounts
         .ledger(report.customerId)
         .creditApplications.some((row) => Number(row.amount_paise) < 0),
     );
@@ -413,10 +435,10 @@ describe('CRM operations', { concurrency: false }, () => {
 
   it('restores redeemed points when their settlement charge is returned', () => {
     const report = fixture('redemption');
-    const newer = crm
+    const newer = queries
       .bootstrap(admin)
       .orders.find((order) => order.customer_id === report.customerId)!;
-    const line = crm.detail(newer.id).shipments[0]!.lines[0]!;
+    const line = orders.detail(newer.id).shipments[0]!.lines[0]!;
     assert.equal(
       run({
         type: 'RECORD_RETURN',
@@ -429,21 +451,21 @@ describe('CRM operations', { concurrency: false }, () => {
       }).status,
       'APPLIED',
     );
-    const value = crm.summary(report.customerId);
+    const value = accounts.summary(report.customerId);
     check(value);
     assert.equal(value.points.available, 1000);
     assert.equal(value.points.redeemed, 0);
     assert.equal(value.creditsOpenPaise, 0);
     assert.equal(value.netBalancePaise, 0);
     assert.ok(
-      crm
+      accounts
         .ledger(report.customerId)
         .redemptions.some((row) => Number(row.points) < 0),
     );
   });
 
   it('keeps exact paise and rounds proportional awards down for partial returns', () => {
-    const customer = crm.createCustomer(admin, {
+    const customer = customers.createCustomer(admin, {
       name: 'Paise account',
       code: randomUUID(),
     });
@@ -460,11 +482,11 @@ describe('CRM operations', { concurrency: false }, () => {
       type: 'START_LOADING',
       payload: {
         orderId,
-        items: [{ lineKey: crm.detail(orderId).lines[0]!.lineKey, qty: 2 }],
+        items: [{ lineKey: orders.detail(orderId).lines[0]!.lineKey, qty: 2 }],
       },
     }).references.shipmentId!;
     run({ type: 'DISPATCH_SHIPMENT', payload: { orderId, shipmentId } });
-    const line = crm.detail(orderId).shipments[0]!.lines[0]!;
+    const line = orders.detail(orderId).shipments[0]!.lines[0]!;
     run({
       type: 'CONFIRM_DELIVERY',
       payload: {
@@ -490,7 +512,7 @@ describe('CRM operations', { concurrency: false }, () => {
         reason: 'One unit returned',
       },
     });
-    const first = crm.summary(customer.id);
+    const first = accounts.summary(customer.id);
     check(first);
     assert.equal(first.outstandingPaise, 233);
     assert.equal(first.points.available, 300);
@@ -505,20 +527,20 @@ describe('CRM operations', { concurrency: false }, () => {
         reason: 'Remaining unit returned',
       },
     });
-    const second = crm.summary(customer.id);
+    const second = accounts.summary(customer.id);
     check(second);
     assert.equal(second.netBalancePaise, -100);
     assert.equal(second.creditsOpenPaise, 100);
     assert.equal(second.points.available, 0);
-    assert.equal(crm.detail(orderId).lines[0]?.delivered, 2);
+    assert.equal(orders.detail(orderId).lines[0]?.delivered, 2);
   });
 
   it('voids pending loading documents after a correction and keeps original dispatch evidence', () => {
     const report = fixture('partial-delivery');
-    const order = crm
+    const order = queries
       .bootstrap(admin)
       .orders.find((row) => row.customer_id === report.customerId)!;
-    const detail = crm.detail(order.id);
+    const detail = orders.detail(order.id);
     const old = JSON.stringify(detail.shipments[0]);
     const loading = run({
       type: 'START_LOADING',
@@ -542,13 +564,13 @@ describe('CRM operations', { concurrency: false }, () => {
       },
     });
     assert.equal(corrected.status, 'APPLIED');
-    const changed = crm.detail(order.id);
+    const changed = orders.detail(order.id);
     assert.equal(JSON.stringify(changed.shipments[0]), old);
     assert.equal(
       changed.shipments.find((row) => row.id === loading)?.status,
       'VOIDED',
     );
-    assert.equal(crm.summary(report.customerId).netBalancePaise, 250000);
+    assert.equal(accounts.summary(report.customerId).netBalancePaise, 250000);
     assert.equal(
       run({
         type: 'START_LOADING',
@@ -559,7 +581,7 @@ describe('CRM operations', { concurrency: false }, () => {
       }).status,
       'APPLIED',
     );
-    check(crm.summary(report.customerId));
+    check(accounts.summary(report.customerId));
   });
 
   it('conserves money, quantities, and points through varied delivery and settlement histories', () => {
@@ -570,7 +592,7 @@ describe('CRM operations', { concurrency: false }, () => {
     };
     let appliedCount = 0;
     for (let caseIndex = 0; caseIndex < 40; caseIndex++) {
-      const customer = crm.createCustomer(admin, {
+      const customer = customers.createCustomer(admin, {
         name: `History ${caseIndex}`,
         code: randomUUID(),
       });
@@ -588,7 +610,7 @@ describe('CRM operations', { concurrency: false }, () => {
         returnedQty = 0;
       let last: ActionEnvelope | undefined;
       const verify = () => {
-        const value = crm.summary(customer.id);
+        const value = accounts.summary(customer.id);
         check(value);
         assert.equal(
           value.netBalancePaise,
@@ -611,10 +633,10 @@ describe('CRM operations', { concurrency: false }, () => {
         const payload = command.payload;
         const expectedVersion =
           'orderId' in payload
-            ? crm.detail(payload.orderId).order.version
-            : crm.summary(payload.customerId).customer.version;
+            ? orders.detail(payload.orderId).order.version
+            : accounts.summary(payload.customerId).customer.version;
         last = { command, expectedVersion, idempotencyKey: randomUUID() };
-        const result = crm.execute(last, admin);
+        const result = actions.execute(last, admin);
         assert.equal(result.status, 'APPLIED', JSON.stringify(result.errors));
         appliedCount++;
         verify();
@@ -650,7 +672,7 @@ describe('CRM operations', { concurrency: false }, () => {
         payload: {
           orderId: first,
           items: [
-            { lineKey: crm.detail(first).lines[0]!.lineKey, qty: qty - 1 },
+            { lineKey: orders.detail(first).lines[0]!.lineKey, qty: qty - 1 },
           ],
         },
       }).references.shipmentId!;
@@ -658,7 +680,7 @@ describe('CRM operations', { concurrency: false }, () => {
         type: 'DISPATCH_SHIPMENT',
         payload: { orderId: first, shipmentId: loaded },
       });
-      const shippedLine = crm.detail(first).shipments[0]!.lines[0]!;
+      const shippedLine = orders.detail(first).shipments[0]!.lines[0]!;
       deliveredValue += price;
       apply({
         type: 'CONFIRM_DELIVERY',
@@ -706,7 +728,7 @@ describe('CRM operations', { concurrency: false }, () => {
         type: 'START_LOADING',
         payload: {
           orderId: second,
-          items: [{ lineKey: crm.detail(second).lines[0]!.lineKey, qty: 1 }],
+          items: [{ lineKey: orders.detail(second).lines[0]!.lineKey, qty: 1 }],
         },
       }).references.shipmentId!;
       apply({
@@ -721,13 +743,13 @@ describe('CRM operations', { concurrency: false }, () => {
           shipmentId: secondShipment,
           items: [
             {
-              shipmentLineId: crm.detail(second).shipments[0]!.lines[0]!.id,
+              shipmentLineId: orders.detail(second).shipments[0]!.lines[0]!.id,
               qty: 1,
             },
           ],
         },
       });
-      const summary = crm.summary(customer.id);
+      const summary = accounts.summary(customer.id);
       const charge = summary.charges.find((row) => row.order_id === second)!;
       const points = Math.min(
         summary.points.available,
@@ -760,7 +782,7 @@ describe('CRM operations', { concurrency: false }, () => {
         type: 'CANCEL_REMAINDER',
         payload: { orderId: first, reason: 'Cancel the unshipped unit' },
       });
-      const credited = crm.summary(customer.id);
+      const credited = accounts.summary(customer.id);
       const credit = credited.credits.find((row) => row.availablePaise > 0);
       const due = credited.charges.find((row) => row.outstandingPaise > 0);
       if (credit && due && caseIndex % 2 === 0) {
@@ -796,12 +818,12 @@ describe('CRM operations', { concurrency: false }, () => {
           reference: 'Later receipt',
         },
       });
-      const before = crm.ledger(customer.id),
-        detail = crm.detail(first),
-        version = crm.summary(customer.id).customer.version;
-      assert.equal(crm.execute(last!, admin).status, 'APPLIED');
-      assert.deepEqual(crm.ledger(customer.id), before);
-      assert.equal(crm.summary(customer.id).customer.version, version);
+      const before = accounts.ledger(customer.id),
+        detail = orders.detail(first),
+        version = accounts.summary(customer.id).customer.version;
+      assert.equal(actions.execute(last!, admin).status, 'APPLIED');
+      assert.deepEqual(accounts.ledger(customer.id), before);
+      assert.equal(accounts.summary(customer.id).customer.version, version);
       const rejected = run({
         type: 'RECORD_RETURN',
         payload: {
@@ -812,8 +834,8 @@ describe('CRM operations', { concurrency: false }, () => {
         },
       });
       assert.equal(rejected.status, 'REJECTED');
-      assert.deepEqual(crm.ledger(customer.id), before);
-      assert.deepEqual(crm.detail(first), detail);
+      assert.deepEqual(accounts.ledger(customer.id), before);
+      assert.deepEqual(orders.detail(first), detail);
       verify();
     }
     assert.ok(appliedCount >= 600);
@@ -821,7 +843,7 @@ describe('CRM operations', { concurrency: false }, () => {
   it('reverses settlements with bounded compensating entries and retains original evidence', () => {
     const report = fixture('credit-settlement');
     const customerId = report.customerId;
-    const original = crm
+    const original = accounts
       .ledger(customerId)
       .creditApplications.find((row) => Number(row.amount_paise) > 0)!;
     const originalCopy = { ...original };
@@ -834,27 +856,27 @@ describe('CRM operations', { concurrency: false }, () => {
         reason: 'Correct settlement attribution',
       },
     };
-    const version = crm.summary(customerId).customer.version;
+    const version = accounts.summary(customerId).customer.version;
     const key = randomUUID();
     const reversed = run(command, admin, version, key);
     assert.equal(reversed.status, 'APPLIED');
     assert.deepEqual(run(command, admin, version, key), reversed);
-    let summary = crm.summary(customerId);
+    let summary = accounts.summary(customerId);
     assert.equal(summary.creditsOpenPaise, 3000);
     assert.equal(summary.outstandingPaise, 5000);
     assert.deepEqual(
-      crm
+      accounts
         .ledger(customerId)
         .creditApplications.find((row) => row.id === original.id),
       originalCopy,
     );
-    const before = crm.ledger(customerId);
+    const before = accounts.ledger(customerId);
     assert.equal(
       run({ ...command, payload: { ...command.payload, amountPaise: 8000 } })
         .status,
       'REJECTED',
     );
-    assert.deepEqual(crm.ledger(customerId), before);
+    assert.deepEqual(accounts.ledger(customerId), before);
     const note = summary.credits[0]!;
     const refund = run({
       type: 'REFUND_CREDIT_NOTE',
@@ -866,7 +888,7 @@ describe('CRM operations', { concurrency: false }, () => {
       },
     });
     assert.equal(refund.status, 'APPLIED');
-    const refundRow = crm
+    const refundRow = accounts
       .ledger(customerId)
       .refunds.find((row) => row.action_id === refund.actionId)!;
     const refundCopy = { ...refundRow };
@@ -880,14 +902,16 @@ describe('CRM operations', { concurrency: false }, () => {
         reference: 'BANK-RETURN-01',
       },
     };
-    const refundedNet = crm.summary(customerId).netBalancePaise;
+    const refundedNet = accounts.summary(customerId).netBalancePaise;
     assert.equal(run(reverseRefund).status, 'APPLIED');
-    summary = crm.summary(customerId);
+    summary = accounts.summary(customerId);
     assert.equal(summary.refundsPaise, 2000);
     assert.equal(summary.creditsOpenPaise, 1000);
     assert.equal(summary.netBalancePaise, refundedNet - 1000);
     assert.deepEqual(
-      crm.ledger(customerId).refunds.find((row) => row.id === refundRow.id),
+      accounts
+        .ledger(customerId)
+        .refunds.find((row) => row.id === refundRow.id),
       refundCopy,
     );
     assert.equal(
@@ -904,9 +928,9 @@ describe('CRM operations', { concurrency: false }, () => {
       }).status,
       'APPLIED',
     );
-    assert.equal(crm.summary(customerId).refundsPaise, 0);
+    assert.equal(accounts.summary(customerId).refundsPaise, 0);
     assert.equal(run(reverseRefund).status, 'REJECTED');
-    const otherCustomer = crm.createCustomer(admin, {
+    const otherCustomer = customers.createCustomer(admin, {
       name: 'Other customer',
       code: randomUUID(),
     });
@@ -917,20 +941,20 @@ describe('CRM operations', { concurrency: false }, () => {
       }).status,
       'REJECTED',
     );
-    const warehouse = crm
+    const warehouse = queries
       .bootstrap(admin)
       .actors.find((user) => user.role === 'WAREHOUSE')!;
     assert.equal(run(command, warehouse).errors[0]?.code, 'FORBIDDEN');
-    check(crm.summary(customerId));
+    check(accounts.summary(customerId));
   });
 
   it('cancels selected unshipped quantities and preserves other demand and dispatched history', () => {
     const report = fixture('partial-delivery');
     const customerId = report.customerId;
-    const order = crm
+    const order = queries
       .bootstrap(admin)
       .orders.find((row) => row.customer_id === customerId)!;
-    const before = crm.detail(order.id);
+    const before = orders.detail(order.id);
     const first = before.lines[0]!;
     const canceled = run({
       type: 'CANCEL_REMAINDER',
@@ -941,7 +965,7 @@ describe('CRM operations', { concurrency: false }, () => {
       },
     });
     assert.equal(canceled.status, 'APPLIED');
-    const detail = crm.detail(order.id);
+    const detail = orders.detail(order.id);
     assert.equal(detail.lines[0]!.canceled, 3);
     assert.equal(detail.lines[0]!.open, 7);
     assert.equal(detail.lines[1]!.open, 5);
@@ -955,8 +979,8 @@ describe('CRM operations', { concurrency: false }, () => {
       },
     });
     assert.equal(bad.errors[0]?.code, 'CANCEL_EXCEEDED');
-    assert.deepEqual(crm.detail(order.id), detail);
-    check(crm.summary(customerId));
+    assert.deepEqual(orders.detail(order.id), detail);
+    check(accounts.summary(customerId));
     const created = run({
       type: 'PUNCH_ORDER',
       payload: {
@@ -971,13 +995,13 @@ describe('CRM operations', { concurrency: false }, () => {
         payload: {
           orderId: id,
           reason: 'Partly cancel a draft',
-          items: [{ lineKey: crm.detail(id).lines[0]!.lineKey, qty: 2 }],
+          items: [{ lineKey: orders.detail(id).lines[0]!.lineKey, qty: 2 }],
         },
       }).status,
       'APPLIED',
     );
-    assert.equal(crm.detail(id).order.status, 'DRAFT');
-    assert.equal(crm.detail(id).lines[0]!.open, 3);
+    assert.equal(orders.detail(id).order.status, 'DRAFT');
+    assert.equal(orders.detail(id).lines[0]!.open, 3);
     assert.equal(
       run({
         type: 'CANCEL_REMAINDER',
@@ -985,7 +1009,7 @@ describe('CRM operations', { concurrency: false }, () => {
       }).status,
       'APPLIED',
     );
-    assert.equal(crm.detail(id).order.status, 'CANCELLED');
+    assert.equal(orders.detail(id).order.status, 'CANCELLED');
   });
   it('records causal posting evidence, snapshots, and checks without replaying activities', () => {
     const report = fixture('paid-return');
@@ -1003,9 +1027,9 @@ describe('CRM operations', { concurrency: false }, () => {
     )!;
     assert.match(adjustment.reason!, /reduce charge/);
     assert.ok(adjustment.provenance!.revision);
-    const version = crm.summary(customerId).customer.version;
-    const ledger = crm.ledger(customerId);
-    const snapshot = crm.snapshot(customerId);
+    const version = accounts.summary(customerId).customer.version;
+    const ledger = accounts.ledger(customerId);
+    const snapshot = queries.snapshot(customerId);
     assert.equal(snapshot.summary.netBalancePaise, -8000);
     assert.ok(
       snapshot.timeline.some(
@@ -1016,15 +1040,15 @@ describe('CRM operations', { concurrency: false }, () => {
       snapshot.timeline.some((event) => event.type === 'RECORD_RETURN'),
     );
     assert.ok(snapshot.review.checks.every((check) => check.passed));
-    assert.deepEqual(crm.ledger(customerId), ledger);
-    assert.equal(crm.summary(customerId).customer.version, version);
-    assert.deepEqual(crm.trace(last.actionId, admin), last);
+    assert.deepEqual(accounts.ledger(customerId), ledger);
+    assert.equal(accounts.summary(customerId).customer.version, version);
+    assert.deepEqual(audit.trace(last.actionId, admin), last);
   });
 
   it('reports inconsistent evidence and rolls back a subsequent activity atomically', () => {
     const report = fixture('customer-payment');
     const customerId = report.customerId;
-    const charge = crm.summary(customerId).charges[0]!;
+    const charge = accounts.summary(customerId).charges[0]!;
     const stop = new Error('Rollback the deliberately altered test record');
     assert.throws(
       () =>
@@ -1033,14 +1057,14 @@ describe('CRM operations', { concurrency: false }, () => {
             sql`update receivable_entries set amount_paise=amount_paise+1 where id=${charge.id}`,
           );
           assert.ok(
-            crm
+            audit
               .review(customerId)
               .checks.some(
                 (check) => !check.passed && check.id === 'recognized-value',
               ),
           );
-          const before = crm.ledger(customerId);
-          const summary = crm.summary(customerId);
+          const before = accounts.ledger(customerId);
+          const summary = accounts.summary(customerId);
           const result = run({
             type: 'RECEIVE_CUSTOMER_PAYMENT',
             payload: {
@@ -1052,27 +1076,27 @@ describe('CRM operations', { concurrency: false }, () => {
           assert.equal(result.errors[0]?.code, 'ACCOUNT_INCONSISTENT');
           assert.deepEqual(result.effects, []);
           assert.deepEqual(result.references, {});
-          assert.deepEqual(crm.ledger(customerId), before);
-          assert.deepEqual(crm.summary(customerId), summary);
+          assert.deepEqual(accounts.ledger(customerId), before);
+          assert.deepEqual(accounts.summary(customerId), summary);
           throw stop;
         }),
       (error) => error === stop,
     );
-    assert.ok(crm.review(customerId).checks.every((check) => check.passed));
+    assert.ok(audit.review(customerId).checks.every((check) => check.passed));
   });
   it('updates customer details with role, version, uniqueness, and audit enforcement', () => {
-    const customer = crm.createCustomer(admin, {
+    const customer = customers.createCustomer(admin, {
       name: 'Before edit',
       code: randomUUID(),
     });
-    const other = crm.createCustomer(admin, {
+    const other = customers.createCustomer(admin, {
       name: 'Another account',
       code: randomUUID(),
     });
-    const sales = crm
+    const sales = queries
       .bootstrap(admin)
       .actors.find((row) => row.role === 'SALES')!;
-    const warehouse = crm
+    const warehouse = queries
       .bootstrap(admin)
       .actors.find((row) => row.role === 'WAREHOUSE')!;
     const command: CrmCommand = {
@@ -1085,9 +1109,9 @@ describe('CRM operations', { concurrency: false }, () => {
     };
     const result = run(command, sales, 0);
     assert.equal(result.status, 'APPLIED');
-    assert.equal(crm.summary(customer.id).customer.name, 'After edit');
+    assert.equal(accounts.summary(customer.id).customer.name, 'After edit');
     assert.equal(
-      crm.customerTimeline(customer.id).at(-1)!.type,
+      audit.customerTimeline(customer.id).at(-1)!.type,
       'UPDATE_CUSTOMER',
     );
     assert.equal(run(command, sales, 0).status, 'CONFLICT');
@@ -1099,7 +1123,10 @@ describe('CRM operations', { concurrency: false }, () => {
       ).errors[0]?.code,
       'CUSTOMER_CODE_EXISTS',
     );
-    assert.equal(crm.summary(customer.id).customer.code, command.payload.code);
+    assert.equal(
+      accounts.summary(customer.id).customer.code,
+      command.payload.code,
+    );
     const change = result.effects.find(
       (effect) =>
         effect.entity === 'customers' &&
@@ -1114,10 +1141,10 @@ describe('CRM operations', { concurrency: false }, () => {
       .send({ email: admin.email, password: 'operations-test-password' })
       .expect(200);
     const cookies = login.headers['set-cookie'] as unknown as string[];
-    for (const order of crm.bootstrap(admin).orders) {
+    for (const order of queries.bootstrap(admin).orders) {
       assert.equal(
         order.totalPaise,
-        crm
+        orders
           .detail(order.id)
           .lines.reduce((sum, line) => sum + line.qty * line.unitPricePaise, 0),
       );
@@ -1134,7 +1161,7 @@ describe('CRM operations', { concurrency: false }, () => {
       creditsOpenPaise: number;
     }>;
     for (const row of rows) {
-      const summary = crm.summary(row.customer.id);
+      const summary = accounts.summary(row.customer.id);
       assert.equal(row.netBalancePaise, summary.netBalancePaise);
       assert.equal(row.outstandingPaise, summary.outstandingPaise);
       assert.equal(row.unappliedCashPaise, summary.unappliedCashPaise);
@@ -1171,7 +1198,7 @@ describe('CRM operations', { concurrency: false }, () => {
   });
   it('serves domain read routes consistently with the customer and order views', async () => {
     const prepared = fixture('paid-return');
-    const order = crm
+    const order = queries
       .bootstrap(admin)
       .orders.find((row) => row.customer_id === prepared.customerId)!;
     const login = await request(app.getHttpServer())
@@ -1190,15 +1217,15 @@ describe('CRM operations', { concurrency: false }, () => {
       ).body as unknown;
     assert.deepEqual(
       await read(`customers/${prepared.customerId}`),
-      crm.summary(prepared.customerId).customer,
+      accounts.summary(prepared.customerId).customer,
     );
     assert.deepEqual(
       await read(`orders/${order.id}/shipments`),
-      crm.detail(order.id).shipments,
+      orders.detail(order.id).shipments,
     );
     assert.deepEqual(
       await read(`customers/${prepared.customerId}/returns`),
-      crm.ledger(prepared.customerId).returns,
+      accounts.ledger(prepared.customerId).returns,
     );
     const credits = (await read(
       `customers/${prepared.customerId}/credits`,
@@ -1207,8 +1234,14 @@ describe('CRM operations', { concurrency: false }, () => {
     const rewards = (await read(
       `customers/${prepared.customerId}/rewards`,
     )) as { points: unknown; entries: unknown };
-    assert.deepEqual(rewards.points, crm.summary(prepared.customerId).points);
-    assert.deepEqual(rewards.entries, crm.ledger(prepared.customerId).rewards);
-    assert.deepEqual(await read('catalog'), crm.bootstrap(admin).skus);
+    assert.deepEqual(
+      rewards.points,
+      accounts.summary(prepared.customerId).points,
+    );
+    assert.deepEqual(
+      rewards.entries,
+      accounts.ledger(prepared.customerId).rewards,
+    );
+    assert.deepEqual(await read('catalog'), queries.bootstrap(admin).skus);
   });
 });
