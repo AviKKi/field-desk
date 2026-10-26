@@ -10,3 +10,4 @@ coverage/
 *.db-wal
 *.tsbuildinfo
 .DS_Store
+reports/
