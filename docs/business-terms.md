@@ -30,7 +30,18 @@ Neither operation edits the original entry or deletes its audit history. Use a f
 
 ## Permissions
 
-Warehouse and Admin submit physical returns. Sales and Admin cancel eligible quantities. KAM and Admin approve or reject exact revisions. Accounts and Admin receive money, reserve and settle credits, record refunds, and reverse settlements. Sales and Accounts may redeem customer points; Admin may do so directly. Other authenticated roles can inspect customer records but cannot grant themselves action permissions.
+Admin may perform every operation below directly. Other roles have these permissions:
+
+| Operation                                                                                  | Roles           |
+| ------------------------------------------------------------------------------------------ | --------------- |
+| Create or edit customer identity                                                           | Sales, Accounts |
+| Create, edit, submit, or cancel order quantities                                           | Sales           |
+| Approve or reject a commercial revision; record an authorized dispatch correction          | KAM             |
+| Prepare and dispatch shipments, confirm deliveries, or record physical returns             | Warehouse       |
+| Receive or allocate cash, reserve or apply credits, record refunds, or reverse settlements | Accounts        |
+| Redeem available customer points                                                           | Sales, Accounts |
+
+Every active authenticated role can inspect CRM customer, order, and account records. Only Admin may manage staff or submit activities as another active staff member. Action traces are visible to their requester, acting staff member, or Admin. Customer creation uses the signed-in user's role; the **Working as** selection applies to activities submitted through the action endpoint.
 
 ## Balance checks
 

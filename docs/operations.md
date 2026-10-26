@@ -67,7 +67,9 @@ In **Rewards**, Sales or Accounts can redeem available points against an outstan
 
 ## Permissions and saving
 
-Buttons appear for the acting staff member's role. The API independently enforces permissions. Sales creates and revises orders; KAM approves revisions; Warehouse manages physical fulfillment; Accounts handles cash and credit. Administrators can use **Working as** in the header to act as another active staff member. Both the acting staff member and signed-in administrator are recorded.
+Buttons appear for the acting staff member's role. The API independently enforces permissions. Sales creates and revises orders; KAM approves revisions; Warehouse manages physical fulfillment; Accounts handles cash and credit. Sales, Accounts, and Admin can create and edit customer identity. All active roles can inspect the CRM tables and detail pages. See [permissions](business-terms.md#permissions) for the complete operation list.
+
+Administrators can use **Working as** in the header to submit order and account activities as another active staff member. Both the acting staff member and signed-in administrator are recorded. Creating a customer and managing Team members use the signed-in user's permissions.
 
 Forms show validation and business errors without closing. If another activity changed a record, reload its current version before resubmitting. Action forms offer **Reload current record**; order detail pages also have **Refresh**. Saving uses request keys so retrying an uncertain action response does not repeat its postings.
 
@@ -78,3 +80,4 @@ Forms show validation and business errors without closing. If another activity c
 - [Business terms](business-terms.md)
 - [Verification](verification.md)
 - [Development setup](../CONTRIBUTING.md)
+- [Architecture](architecture.md)
