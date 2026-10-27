@@ -1,0 +1,22 @@
+digraph RewardDependencies {
+  graph [rankdir=TB, bgcolor="white", pad=0.4, nodesep=0.5, ranksep=0.7, fontname="Helvetica", fontsize=20, label="Reward facts and balances", labelloc=t];
+  node [shape=box, style="rounded,filled", fillcolor="#eef4fc", color="#6483a8", fontname="Helvetica", fontsize=13, margin="0.18,0.12"];
+  edge [color="#73869c", fontname="Helvetica", fontsize=11, arrowsize=0.7];
+  terms [label="Approval status\nOrdered, canceled, returned units\nCommercial points rate"];
+  cash [label="Net cash per goods charge\nCommercial price and points rate"];
+  spent [label="Net point settlements"];
+  entitlement [label="Retained entitlement\nREW-001"];
+  earned [label="Cash-earned points\nREW-002"];
+  locked [label="LOCKED\nREW-003", fillcolor="#e3f3ea"];
+  available [label="AVAILABLE\nREW-003", fillcolor="#e3f3ea"];
+  clawback [label="CLAWBACK_PENDING\nREW-003", fillcolor="#fff7e8"];
+  terms -> entitlement;
+  cash -> earned [label="Round down per charge"];
+  entitlement -> earned [label="Cap"];
+  entitlement -> locked;
+  earned -> locked;
+  earned -> available;
+  earned -> clawback;
+  spent -> available;
+  spent -> clawback;
+}

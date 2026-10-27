@@ -1,0 +1,26 @@
+digraph OrderLifecycle {
+  graph [rankdir=TB, bgcolor="white", pad=0.4, nodesep=0.5, ranksep=0.7, fontname="Helvetica", fontsize=20, label="Commercial order lifecycle", labelloc=t];
+  node [shape=box, style="rounded,filled", fillcolor="#eef4fc", color="#6483a8", fontname="Helvetica", fontsize=13, margin="0.18,0.12"];
+  edge [color="#73869c", fontname="Helvetica", fontsize=11, arrowsize=0.7];
+  start [shape=point, label=""];
+  draft [label="DRAFT"];
+  pending [label="PENDING"];
+  approved [label="APPROVED", fillcolor="#e3f3ea"];
+  rejected [label="REJECTED"];
+  reapproval [label="REAPPROVAL_REQUIRED"];
+  start -> draft [label="Create\nORD-005"];
+  draft -> pending [label="Submit\nORD-005"];
+  rejected -> pending [label="Submit\nORD-005", constraint=false];
+  pending -> approved [label="Approve current revision\nORD-005"];
+  pending -> rejected [label="Reject current revision\nORD-005"];
+  draft -> draft [label="Edit\nORD-003 / ORD-005"];
+  pending -> draft [label="Edit\nORD-003 / ORD-005", constraint=false];
+  rejected -> draft [label="Edit\nORD-003 / ORD-005", constraint=false];
+  approved -> reapproval [label="Edit\nORD-003 / ORD-005"];
+  reapproval -> reapproval [label="Submit, or edit\nORD-003 / ORD-005"];
+  reapproval -> approved [label="Approve current revision\nORD-005", constraint=false];
+  reapproval -> rejected [label="Reject current revision\nORD-005", constraint=false];
+  { rank=same; approved; rejected; }
+  note [shape=note, fillcolor="#fff7e8", color="#ccaa6a", label="ORD-004 / ORD-005\nAny eligible order: cancel open demand.\nCANCELLED only when all units are canceled\nand no units were dispatched.\n\nWF-004\nAn authorized extra-goods correction\nestablishes APPROVED at the next revision."];
+  reapproval -> note [style=invis];
+}

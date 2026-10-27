@@ -1,132 +1,335 @@
 # Canonical business rules
 
-Version **2026-10-26.1**. Apply these rules together. `require` rejects an operation when its predicate is false. Signed totals include compensating entries. Permissions and entity meanings are defined in [Business terms](business_terms.md). Payload fields and limits are defined in the [API contract](../../shared/src/crm.ts).
+Operating conventions **2026-10-26.1**. This specification defines the business facts for each domain module, followed by policies that connect modules. Rule identifiers are local to this edition; the operating conventions are unchanged.
 
-## R1. Valid authority and evidence
+Invariants hold after a completed business operation. Policies select permitted business outcomes. Transitions introduce facts or change business state. Diagrams illustrate the cited rules without adding policies.
 
-Require an active authenticated requester and an active actor. A new command requires the action's permitted role. Only Admin can select another actor. Require existing references within the selected customer/order/shipment and distinct submitted item identities. Require valid payloads, positive quantities/amounts, and safe integer calculations; explicitly permitted zero values are return fees and corrected delivered quantities. Customer codes and staff emails are unique.
+Roles and action ownership are defined in [Business terms](business_terms.md#roles-and-actions). Authentication, request validation, retries, versions, and transaction mechanics belong to the [API reference](../api.md). Supporting modules are described in the [module index](../../server/src/README.md); they do not introduce separate commercial policies here.
 
-Preserve commercial revisions, dispatched facts, receipts, and financial/reward postings. Record adjustments as linked additions. Each applied CRM command has one activity with its actor, requester, and source references.
+## Notation
 
-## R2. Atomic requests
+Money is in integer INR paise; quantities and points are integers. A prime denotes the resulting value. An operation quantity or amount is positive unless its rule explicitly permits zero. All sums of postings are signed, including reversals. Recording order means the order in which facts were recorded.
 
-An operation must preserve all applicable rules before commit. Rejection or an unresolved decision commits no business changes. Request outcomes remain available for retries.
+| Symbol                    | Business fact                                                                                               |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| $l,h,j,i,n$               | Commercial line, shipment line, charge, receipt, credit note.                                               |
+| $Q_l,C_l,S_l,D_l,R_l,L_l$ | Ordered, canceled, dispatched, gross delivered, returned, and currently loading units of a commercial line. |
+| $s_h,d_h,r_h$             | Dispatched, gross delivered, and returned units of a shipment line.                                         |
+| $p_l,\rho_l,p_h$          | Agreed commercial price, commercial points per unit, and shipment-line price.                               |
+| $v_j,c_j,k_j,z_j,b_j$     | Retained charge value, cash applied, credit applied, points applied, and outstanding amount.                |
+| $m_i,a_i,f_i,u_i$         | Receipt amount, net cash allocated, credit funding reserved, and free cash.                                 |
+| $I_n,K_n,F_n,O_n$         | Issued credit, net applications, net refunds, and open credit.                                              |
 
-A key belongs to its requester. An exact retry returns the saved result. Reuse with changed command, actor, or expected version conflicts. Every command except `PUNCH_ORDER` requires a matching expected version: order version for `orderId`, customer version for `customerId`. If supplied for `PUNCH_ORDER`, check the customer version. An applied command increments the customer version and every order version on that customer. A changed or resolved request uses a new key.
+Commercial physical totals sum their shipment-line facts. Loading counts only batches still `LOADING`; voided batches do not reserve demand. Retained charge value is the original charge plus its signed adjustments. Receipt funding is the sum of its reservations across credit notes.
 
-## R3. Commercial authority
+## Module specifications
 
-Create an order at revision 1 in `DRAFT`. Store each line's agreed price and the SKU's current reward rate. Customer creation starts at version zero; identity updates preserve history and unique codes.
+### Customers
 
-| Operation      | Required condition                                                              | Result                                                                                                                                                                                                            |
-| -------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Edit           | No dispatch, no cancellation entry, and status is not `CANCELLED`.              | Append a revision. Use `REAPPROVAL_REQUIRED` if previously approved/awaiting reapproval; otherwise use `DRAFT`. Void loading documents and compensate old locked entitlement. Retain line keys for retained SKUs. |
-| Submit         | `DRAFT`, `REJECTED`, or `REAPPROVAL_REQUIRED`.                                  | Use `PENDING`, retaining `REAPPROVAL_REQUIRED` when already set.                                                                                                                                                  |
-| Approve/reject | `PENDING` or `REAPPROVAL_REQUIRED`; requested revision equals current revision. | Record the decision and set `APPROVED`/`REJECTED`. Approval establishes locked entitlement for uncanceled units.                                                                                                  |
+#### Invariants
 
-Loading and dispatch require `APPROVED` and approval evidence for the current revision. A loading document must also name that revision when dispatched.
+**CUS-001. Account ownership.** Each order, receipt, credit note, and reward balance belongs to one customer. A settlement or funding link must connect records of that same customer.
 
-## R4. Quantity bounds
+**CUS-002. Account identity.** Customer codes are unique across customer accounts.
 
-For each current commercial line, let `Q` be ordered units, `C` canceled units, `S` dispatched units, `D` delivered units, `R` returned units, and `L` units in nonvoided loading batches:
+#### Transitions
 
-```text
-open = Q - C - S
-0 <= R <= D <= S
-0 <= L <= open
-C >= 0; open >= 0
-```
+**CUS-003. Identity change.** Creating a customer establishes an account identity. Changing its name or code retains that identity and its existing business records.
 
-Apply delivery/return bounds separately to each physical shipment line. Loading reserves open demand. Dispatch only a `LOADING` batch; move its whole loaded quantity to dispatched units. Confirm delivery only for a `DISPATCHED` batch. Add only previously unconfirmed dispatched units; set `DELIVERED` when every dispatched unit is confirmed. A partial confirmation leaves it `DISPATCHED`.
+### Catalog
 
-Cancellation removes selected open quantities, or all open quantities when items are omitted. Require a nonempty effective cancellation. Void pending loading batches. Set commercial status `CANCELLED` only when all ordered units are canceled and none were dispatched. Returns do not reopen demand or erase gross delivery quantities.
+#### Invariants
 
-Order fulfillment uses the first matching condition below, summing current-line quantities:
+**CAT-001. Product identity and terms.** SKU codes are unique. Each SKU has a positive catalog price and a positive points-per-unit rate.
 
-```text
-Q-C == 0       -> CANCELLED
-D >= Q-C       -> DELIVERED
-D > 0          -> PARTIALLY_DELIVERED
-S >= Q-C       -> DISPATCHED
-S > 0          -> PARTIALLY_DISPATCHED
-L > 0          -> LOADING
-otherwise      -> UNFULFILLED
-```
+#### Domain policies
 
-## R5. Additional dispatched goods
+**CAT-002. Commercial snapshot.** An ordinary new or edited commercial revision uses the supplied agreed price and the SKU's current points rate. Retained SKUs retain their commercial line identity. Historical documents retain their recorded terms. Additional dispatched goods use **WF-004** instead.
 
-Require an existing dispatch, a reason, evidence, and an authorization reference. Ask for the shipment location if absent. For an existing-shipment location, also ask if its identifier is absent. A supplied existing dispatch must belong to this order; a separate dispatch requires its actual timestamp, not in the future. For each added item, require `0 <= delivered <= added`.
+### Orders
 
-Retain the price of an existing SKU line. Add new SKU lines at the supplied price. Preserve existing line rates; supplemental shipment lines use the SKU's current rate. Append a commercial revision, its authorization/approval, and a physical supplement. Keep original dispatch evidence. Void pending loading batches. Charge only confirmed additional deliveries. This action does not decrease or overwrite historical quantities.
+#### Invariants
 
-## R6. Charge and cash conservation
+**ORD-001. Demand partition.** Each commercial revision contains at most one line per SKU. For each current commercial line, open demand $U_l$ satisfies:
 
-Each delivery confirmation creates exactly one goods charge: `confirmed units * shipment-line price`. Loading/dispatch alone creates none. A return reduces its original goods charges by `returned units * shipment-line price`. Return deductions create separate fee charges.
+$$
+Q_l=C_l+S_l+U_l,\qquad C_l,S_l,U_l\geq0,\qquad 0\leq L_l\leq U_l.
+$$
 
-For each charge and receipt:
+**ORD-002. Approval scope.** Commercial approval belongs to one exact revision. An order in `APPROVED` has an approval for its current revision.
 
-```text
-due = original charge + signed adjustments - cash applied - credit applied - points applied
-free cash = receipt amount - net cash allocations - credit funding reserved
-require due >= 0 and free cash >= 0
-```
+#### Domain policies
 
-Receipts belong to customers. Allocate free cash across positive outstanding charges by creation time, then insertion order; visit receipts in the same ordering. Allocate at receipt capture, delivery/correction, return completion, or explicit allocation. Advances remain free until charges exist. Cancellation/rejection does not automatically reserve an advance as credit.
+**ORD-003. Ordinary edit boundary.** An ordinary edit is permitted only before any dispatch or cancellation and while the order is not `CANCELLED`.
 
-## R7. Return settlement
+**ORD-004. Cancellation scope.** Cancel selected unshipped demand, or all open demand when no selection is supplied. At least one unit must be canceled. A reason is required.
 
-Record physical returns directly. Require a reason and an explicit fee `f`, with `0 <= f <= gross returned value`. Reduce source goods charges in insertion order. For any settlement exceeding a reduced charge, release cash first, then credit, then redeemed points. Within cash or credit, release source groups in reverse order of their first allocation/application. Restore each released settlement to its original receipt, credit note, or point balance.
+$$
+0\leq q_l\leq U_l,\qquad \sum_l q_l>0.
+$$
 
-Pay the fee first from released cash. Reserve remaining released cash as a receipt-backed credit. Run normal cash allocation afterward. Credit/point releases are not new receipts. An unpaid return reduces the obligation without inventing credit funding. Refresh reward entitlement after these adjustments.
+#### Transitions
 
-## R8. Funded credit
+**ORD-005. Commercial lifecycle.** Creation establishes revision 1. Editing appends a revision; review decisions apply to the current revision only. Rejection and editing require a reason.
 
-For each credit note:
+| Operation | Starting condition                                      | Result                                                                                                         |
+| --------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Create    | New order                                               | `DRAFT`.                                                                                                       |
+| Edit      | ORD-003; previously `APPROVED` or `REAPPROVAL_REQUIRED` | Next revision; `REAPPROVAL_REQUIRED`.                                                                          |
+| Edit      | ORD-003; any other permitted status                     | Next revision; `DRAFT`.                                                                                        |
+| Submit    | `DRAFT` or `REJECTED`                                   | `PENDING`.                                                                                                     |
+| Submit    | `REAPPROVAL_REQUIRED`                                   | Remain `REAPPROVAL_REQUIRED`.                                                                                  |
+| Approve   | `PENDING` or `REAPPROVAL_REQUIRED`                      | Record approval; `APPROVED`.                                                                                   |
+| Reject    | `PENDING` or `REAPPROVAL_REQUIRED`                      | Record rejection; `REJECTED`.                                                                                  |
+| Cancel    | ORD-004                                                 | Append cancellations, $C'_l=C_l+q_l$. Set `CANCELLED` only if all units are canceled and none were dispatched. |
 
-```text
-issued = sum(receipt funding)
-open credit = issued - net applications - net refunds
-require open credit >= 0
-```
+**ORD-006. Loading withdrawal.** An ordinary edit or effective cancellation voids **all** loading batches of the order.
 
-Explicit issue reserves only free customer cash, using receipt insertion order. Applying credit requires `0 < amount <= min(open credit, selected charge due)`. A recorded refund requires `0 < amount <= open credit`, a bank reference, and receipt backing; split it in funding-entry insertion order, within each receipt's remaining funded refund capacity. Funding stays reserved after application/refund. Credit application is explicit and creates neither cash nor rewards.
+![Commercial lifecycle diagram](diagrams/order-lifecycle.svg)
 
-## R9. Settlement reversal
+### Fulfillment
 
-Require a positive original settlement entry, a positive reversal amount, and a reason; append a linked negative entry. Application reversal is bounded by both that entry's unreversed amount and net credit still applied between its note and charge. Refund reversal is bounded by the entry's unreversed amount and requires a bank reference. Reverse split refunds per original entry. Restore open credit; application reversal also restores charge due. Do not run cash allocation automatically for either reversal.
+#### Invariants
 
-## R10. Reward entitlement and settlement
+**FUL-001. Physical quantity bounds.** Apply these bounds separately to each shipment line:
 
-For each current commercial line `l`, let `p_l` be its price, `r_l` its reward rate, and `cash_j` the net cash attributed to each positive goods charge for that line:
+$$
+0\leq r_h\leq d_h\leq s_h.
+$$
 
-```text
-entitlement_l = (status == APPROVED) ? max(0, Q_l-C_l-R_l) * r_l : 0
-earned_l = min(entitlement_l, sum_j floor(cash_j * r_l / p_l))
-locked = sum_l(entitlement_l - earned_l)
-available = max(0, sum_l earned_l - net points redeemed)
-clawback pending = max(0, net points redeemed - sum_l earned_l)
-```
+**FUL-002. Shipment authority.** Every nonvoided shipment uses an approved commercial revision. A loading batch uses the current revision.
 
-Round per charge before summing. Adjust ledger buckets to these values when qualifying facts change. Fees, unapplied advances, credit, and point settlements do not earn points. Later earnings offset pending clawback before becoming available.
+#### Domain policies
 
-Redemption requires zero pending clawback and `0 < points <= min(available, selected charge due)`. One point settles one paise. Reversing a point settlement reduces net redeemed points; changing entitlement preserves earlier redemption evidence.
+**FUL-003. Loading and dispatch gate.** Loading and dispatch require the order to be `APPROVED` for the current revision. Dispatch also requires the loading document to name that revision.
 
-## R11. Account position
+#### Transitions
 
-All charges, allocations, funding, applications, refunds, and redemptions must stay within their source quantities/amounts and the same customer. Their signed totals must satisfy:
+**FUL-004. Loading.** Create a `LOADING` batch that reserves selected open units. For each selected commercial line:
 
-```text
-net = delivered goods value - returned goods value + return fees
-      - receipts + net refunds - net points redeemed
-    = total charge due - total free cash - total open credit
-```
+$$
+0<q_l\leq U_l-L_l,\qquad L'_l=L_l+q_l.
+$$
 
-A positive net means the customer owes money. A negative net means value is owed to the customer. No operation may create cash or physical facts merely to balance the account.
+**FUL-005. Dispatch.** Dispatch a whole `LOADING` batch. Its loaded units become dispatched units, its reservation ends, and its status becomes `DISPATCHED`.
+
+**FUL-006. Delivery.** Confirm additional quantities only on a `DISPATCHED` batch. Retain every confirmation. Set the batch to `DELIVERED` exactly when all its dispatched units have been confirmed.
+
+$$
+0<q_h\leq s_h-d_h,\qquad d'_h=d_h+q_h.
+$$
+
+![Shipment lifecycle diagram](diagrams/shipment-lifecycle.svg)
+
+### Returns
+
+#### Domain policies
+
+**RET-001. Return source.** A physical return identifies delivered shipment lines and a reason. It is recorded when goods are received back.
+
+$$
+0<q_h\leq d_h-r_h.
+$$
+
+**RET-002. Return valuation.** Value returned goods at their shipment-line price. The explicitly chosen deduction $\phi$ can be zero and cannot exceed the gross return value $g$.
+
+$$
+g=\sum_h q_hp_h,\qquad 0\leq\phi\leq g.
+$$
+
+#### Transitions
+
+**RET-003. Physical receipt.** Append the return, increasing returned quantity without replacing the delivery fact:
+
+$$
+r'_h=r_h+q_h.
+$$
+
+Financial settlement of that return is defined once in **WF-003**.
+
+### Accounts
+
+#### Invariants
+
+**ACC-001. Charge capacity.** For each charge, settlements and the remaining obligation are nonnegative:
+
+$$
+v_j,c_j,k_j,z_j\geq0,\qquad b_j=v_j-c_j-k_j-z_j\geq0.
+$$
+
+**ACC-002. Receipt capacity.** Receipt value is either allocated, reserved as credit funding, or free:
+
+$$
+a_i,f_i\geq0,\qquad u_i=m_i-a_i-f_i\geq0.
+$$
+
+#### Domain policies
+
+**ACC-003. Cash priority.** Allocate free cash across the customer's outstanding charges in creation-time order, breaking ties by recording order. Visit receipts in that same ordering. Each allocation takes:
+
+$$
+x=\min(u_i,b_j).
+$$
+
+#### Transitions
+
+**ACC-004. Payment receipt.** Record a customer payment with its receipt reference, then apply **WF-002**. A receipt names the customer rather than an order.
+
+**ACC-005. Cash allocation.** For a positive allocation $x$, append the receipt-to-charge attribution:
+
+$$
+a'_i=a_i+x,\qquad c'_j=c_j+x.
+$$
+
+### Credits
+
+#### Invariants
+
+**CRD-001. Funded credit capacity.** Let $f_{ni}$ be the amount of receipt $i$ reserved for note $n$. Every credit note is fully receipt-backed, and applications and refunds remain within its issued value:
+
+$$
+I_n=\sum_i f_{ni},\qquad K_n,F_n\geq0,\qquad O_n=I_n-K_n-F_n\geq0.
+$$
+
+Net refunds attributed to a note/receipt pair cannot exceed that pair's funding.
+
+#### Domain policies
+
+**CRD-002. Explicit issue.** Reserve only free cash. Choose receipts in recording order until the requested issue amount is funded.
+
+$$
+0<x\leq\sum_i u_i.
+$$
+
+**CRD-003. Application.** Apply credit explicitly to a selected charge:
+
+$$
+0<x\leq\min(O_n,b_j).
+$$
+
+**CRD-004. Refund.** Record a refund against open credit, with a bank reference. Split it across the note's funding receipts in funding-record order, within each receipt's unrefunded funding capacity.
+
+$$
+0<x\leq O_n.
+$$
+
+**CRD-005. Reversal limits.** A reversal names a positive original entry and a reason; refund reversal also records a bank reference. Let $w_e$ be that entry's amount less its linked reversals, and $K_{nj}$ the net credit still applied between its note and charge:
+
+$$
+\begin{aligned}
+\text{Application reversal: }&0<x\leq\min(w_e,K_{nj}),\\
+\text{Refund reversal: }&0<x\leq w_e.
+\end{aligned}
+$$
+
+#### Transitions
+
+**CRD-006. Credit movements.** Append the appropriate fact. Issuance requires a reason. Application and refund leave the receipt funding reserved; reversal appends a negative entry linked to the original. A split refund is reversed per original entry.
+
+| Operation           | Appended fact                                                 |
+| ------------------- | ------------------------------------------------------------- |
+| Issue               | Note of $x$, with receipt funding totaling $x$.               |
+| Apply               | Application of $+x$ from note to charge.                      |
+| Refund              | Refund entries totaling $+x$, attributed to funding receipts. |
+| Reverse application | Application of $-x$ to the same note and charge.              |
+| Reverse refund      | Refund of $-x$ to the same note and funding receipt.          |
+
+![Credit movement diagram](diagrams/credit-movements.svg)
+
+### Rewards
+
+#### Domain policies
+
+**REW-001. Retained entitlement.** Commercial approval establishes entitlement at the commercial line's recorded points rate:
+
+$$
+E_l=\begin{cases}
+(Q_l-C_l-R_l)\rho_l,&\text{order status is APPROVED},\\
+0,&\text{otherwise}.
+\end{cases}
+$$
+
+**REW-002. Cash qualification.** Earn points from net cash applied to goods charges, using the current commercial line's recorded price and points rate. Round down **per charge**, then cap at retained entitlement:
+
+$$
+e_l=\min\left(E_l,\sum_{j\in\operatorname{goods}(l)}
+\left\lfloor\frac{c_j\rho_l}{p_l}\right\rfloor\right).
+$$
+
+**REW-003. Bucket policy.** Let $Z$ be the customer's net redeemed points. The required reward balances are:
+
+$$
+\begin{aligned}
+\mathrm{Locked}&=\sum_l(E_l-e_l),\\
+\mathrm{Available}&=\max\left(0,\sum_l e_l-Z\right),\\
+\mathrm{ClawbackPending}&=\max\left(0,Z-\sum_l e_l\right).
+\end{aligned}
+$$
+
+**REW-004. Redemption.** One point settles one paise of a selected charge. Redemption is permitted only with no pending clawback:
+
+$$
+\mathrm{ClawbackPending}=0,\qquad
+0<x\leq\min(\mathrm{Available},b_j).
+$$
+
+#### Transitions
+
+**REW-005. Reward postings.** Post signed differences to bring balances to **REW-001** through **REW-003** when their input facts change. Redemption appends a point settlement and increases $Z$; releasing a point settlement appends its negative and decreases $Z$.
+
+![Reward dependency diagram](diagrams/reward-dependencies.svg)
+
+## Intermodule and workflow logic
+
+### Invariants
+
+**WF-001. Business history.** Preserve commercial revisions, confirmed dispatches and deliveries, returns, receipts, and posted financial/reward entries. Changes to posted value use linked additions or compensating entries.
+
+### Domain policies
+
+**WF-002. Cash allocation occasions.** Apply **ACC-003** after payment receipt, delivery confirmation, additional-goods correction, and completed return settlement, or on explicit allocation. Other operations do not trigger cash allocation.
+
+### Transitions
+
+**WF-003. Return settlement.** For each returned shipment line, reduce its goods charges in recording order by the gross returned value. Append negative adjustments to the original charges. For each reduced charge, release only settlement exceeding its retained value, taking cash first, then credit, then points. Within cash or credit, visit source groups in reverse order of their first allocation/application. Restore each released amount to its original receipt, credit note, or point balance.
+
+Record the deduction as a separate fee charge. Apply released cash to that fee first, in the order the receipt sources were first encountered during release. Reserve any remaining released cash as a new receipt-backed credit note. Then apply **WF-002**.
+
+**WF-004. Additional dispatched goods.** An existing dispatch, a reason, supporting evidence, and an authorization reference are required. Identify whether the additional units traveled in a named existing dispatch of this order or a separate dispatch. A separate dispatch requires its actual time, no later than the present. Until the physical dispatch is identified, no correction is recorded.
+
+For each added SKU, record positive additional units $q$ and already delivered units $d$, where $0\leq d\leq q$. Append a commercial revision with $Q'_l=Q_l+q_l$ for retained SKUs and new lines for added SKUs. Retained SKUs keep their agreed price and commercial points rate; new SKUs use the supplied price and current catalog rate. Record authorization as approval of the new revision and set the order to `APPROVED`.
+
+Void all loading batches. Append a dispatched supplement, linked to the original dispatch when applicable, retaining its dispatch time; otherwise use the separate dispatch's actual time. Supplement lines use the current catalog points rate. Record the supplied delivered units through **WF-005**; later confirmations follow **FUL-006**.
+
+**WF-005. Delivery recognition.** Each delivery confirmation creates exactly one goods charge at the shipment-line price:
+
+$$
+\operatorname{value}(\operatorname{charge}(e))=q_ep_h,
+\qquad \#\operatorname{charges}(e)=1.
+$$
+
+Then apply **WF-002**. Loading and dispatch introduce only their physical facts under **FUL-004** and **FUL-005**.
+
+### Account invariant
+
+**WF-006. Customer account conservation.** For each customer, the economic position and the open balances must agree. Let $G$ be gross confirmed delivery value, $V$ gross returned value, $\Phi$ return deductions, $M$ receipts, and $F$ net recorded refunds:
+
+$$
+G-V+\Phi-M+F-Z
+=\sum_j b_j-\sum_i u_i-\sum_n O_n.
+$$
+
+Positive value means the customer owes money; negative value means value is owed to the customer.
+
+![Return settlement flow](diagrams/return-settlement.svg)
+
+![Account dependency diagram](diagrams/account-dependencies.svg)
 
 ## Related
 
-- [Walkthrough](README.md)
+- [Business guide](README.md)
 - [Business terms](business_terms.md)
 - [Business reference](../business-terms.md)
-- [Verification](../verification.md)
 - [API reference](../api.md)
+- [Backend module responsibilities](../../server/src/README.md)
+- [Verification](../verification.md)

@@ -34,6 +34,7 @@ Domain commands enter through Actions, which owns transaction/savepoint boundari
 
 ## Related
 
+- [Canonical business rules](../../docs/candidate-walkthrough/canonical_business_rules.md)
 - [Architecture and deployment](../../docs/architecture.md)
 - [API reference](../../docs/api.md)
 - [Verification](../../docs/verification.md)

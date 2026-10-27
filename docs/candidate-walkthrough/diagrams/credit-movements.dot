@@ -1,0 +1,17 @@
+digraph CreditMovements {
+  graph [rankdir=TB, bgcolor="white", pad=0.4, nodesep=0.65, ranksep=1, fontname="Helvetica", fontsize=20, label="Receipt-backed credit movements", labelloc=t];
+  node [shape=box, style="rounded,filled", fillcolor="#eef4fc", color="#6483a8", fontname="Helvetica", fontsize=13, margin="0.18,0.12"];
+  edge [color="#73869c", fontname="Helvetica", fontsize=11, arrowsize=0.7];
+  cash [label="Free receipt cash"];
+  credit [label="Open funded credit", fillcolor="#e3f3ea"];
+  charge [label="Credit applied\nto selected charge"];
+  refund [label="Recorded refund\nattributed to funding receipt"];
+  cash -> credit [label="Reserve receipt backing\nCRD-002 / CRD-006"];
+  credit -> charge [label="Explicit application\nCRD-003 / CRD-006"];
+  charge -> credit [label="Bounded application reversal\nCRD-005 / CRD-006"];
+  charge -> credit [label="Release excess on return\nWF-003", style=dashed];
+  credit -> refund [label="Bank-referenced refund\nCRD-004 / CRD-006"];
+  refund -> credit [label="Bounded refund reversal\nCRD-005 / CRD-006"];
+  note [shape=note, fillcolor="#fff7e8", color="#ccaa6a", label="CRD-006\nReceipt funding stays reserved after application or refund.\nOriginal entries remain; reversals are signed additions.\n\nAmounts may occupy several positions at once.\nThese are value movements, not exclusive note states."];
+  refund -> note [style=invis];
+}

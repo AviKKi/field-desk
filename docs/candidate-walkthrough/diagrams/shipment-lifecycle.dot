@@ -1,0 +1,17 @@
+digraph ShipmentLifecycle {
+  graph [rankdir=TB, bgcolor="white", pad=0.4, nodesep=0.6, ranksep=0.9, fontname="Helvetica", fontsize=20, label="Shipment lifecycle", labelloc=t];
+  node [shape=box, style="rounded,filled", fillcolor="#eef4fc", color="#6483a8", fontname="Helvetica", fontsize=13, margin="0.18,0.12"];
+  edge [color="#73869c", fontname="Helvetica", fontsize=11, arrowsize=0.7];
+  start [shape=point, label=""];
+  loading [label="LOADING"];
+  dispatched [label="DISPATCHED"];
+  delivered [label="DELIVERED", fillcolor="#e3f3ea"];
+  voided [label="VOIDED", fillcolor="#f5eeee"];
+  start -> loading [label="Reserve open units\nFUL-004"];
+  loading -> dispatched [label="Dispatch entire batch\nFUL-003 / FUL-005"];
+  loading -> voided [label="Edit, cancellation, or extra-goods correction\nORD-006 / WF-004"];
+  dispatched -> dispatched [label="Confirm part of remaining delivery\nFUL-006"];
+  dispatched -> delivered [label="Confirm all remaining delivery\nFUL-006"];
+  note [shape=note, fillcolor="#fff7e8", color="#ccaa6a", label="WF-004\nA correction creates a dispatched supplement.\nIt starts DELIVERED if all added units\nare already confirmed; otherwise DISPATCHED.\n\nRET-003\nReturns append receipt facts.\nThey do not replace delivery confirmations."];
+  delivered -> note [style=invis];
+}

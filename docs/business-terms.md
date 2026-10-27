@@ -3,7 +3,8 @@
 The CRM uses operating conventions version **2026-10-26.1**. The business guide is the source for the vocabulary and canonical behavior:
 
 - [Business terms](candidate-walkthrough/business_terms.md): entities, states, roles, and actions.
-- [Canonical business rules](candidate-walkthrough/canonical_business_rules.md): authority, transitions, quantities, finance, returns, corrections, rewards, and request integrity.
+- [Canonical business rules](candidate-walkthrough/canonical_business_rules.md): module invariants, domain policies, transitions, and intermodule workflows, with equations and SVG diagrams.
+- [API reference](api.md#activities): request validation, retries, versions, and execution outcomes.
 
 ## Permissions
 
@@ -11,11 +12,11 @@ See [Roles and actions](candidate-walkthrough/business_terms.md#roles-and-action
 
 ## Settlement corrections
 
-See [Settlement reversal](candidate-walkthrough/canonical_business_rules.md#r9-settlement-reversal) and [Additional dispatched goods](candidate-walkthrough/canonical_business_rules.md#r5-additional-dispatched-goods) for the supported correction operations.
+See [Credits](candidate-walkthrough/canonical_business_rules.md#credits), especially CRD-005 and CRD-006, for settlement reversals. See WF-004 in [Intermodule and workflow logic](candidate-walkthrough/canonical_business_rules.md#intermodule-and-workflow-logic) for additional dispatched goods.
 
 ## Balance checks
 
-See [Account position](candidate-walkthrough/canonical_business_rules.md#r11-account-position). Activity results preserve the terms version used for the request; an exact retry preserves the original outcome.
+See WF-006 under [Account invariant](candidate-walkthrough/canonical_business_rules.md#account-invariant). Activity results preserve the terms version used for the request; an exact retry preserves the original outcome.
 
 ## Version history
 

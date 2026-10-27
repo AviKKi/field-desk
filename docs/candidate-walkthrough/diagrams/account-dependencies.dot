@@ -1,0 +1,31 @@
+digraph AccountDependencies {
+  graph [rankdir=TB, bgcolor="white", pad=0.4, nodesep=0.55, ranksep=0.7, fontname="Helvetica", fontsize=20, label="Customer account conservation", labelloc=t];
+  node [shape=box, style="rounded,filled", fillcolor="#eef4fc", color="#6483a8", fontname="Helvetica", fontsize=13, margin="0.18,0.12"];
+  edge [color="#73869c", fontname="Helvetica", fontsize=11, arrowsize=0.7];
+  delivery [label="Confirmed deliveries\nShipment-line prices"];
+  returns [label="Physical returns\nReturn deductions"];
+  receipts [label="Customer receipts"];
+  refunds [label="Net refunds"];
+  points [label="Net point settlements"];
+  charges [label="Retained goods and fee charges\nWF-003 / WF-005"];
+  due [label="Outstanding charges\nACC-001"];
+  cash [label="Free receipt cash\nACC-002"];
+  credit [label="Open funded credit\nCRD-001"];
+  economic [label="Economic position\nWF-006"];
+  balances [label="Due minus free cash minus open credit\nWF-006"];
+  equal [shape=diamond, fillcolor="#e3f3ea", label="Equal\nWF-006"];
+  delivery -> charges;
+  returns -> charges;
+  charges -> due;
+  receipts -> cash;
+  delivery -> economic;
+  returns -> economic;
+  receipts -> economic;
+  refunds -> economic;
+  points -> economic;
+  due -> balances;
+  cash -> balances;
+  credit -> balances;
+  economic -> equal;
+  balances -> equal;
+}
