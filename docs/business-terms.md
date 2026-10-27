@@ -16,7 +16,7 @@ See [Credits](candidate-walkthrough/canonical_business_rules.md#credits), especi
 
 ## Balance checks
 
-See WF-006 under [Account invariant](candidate-walkthrough/canonical_business_rules.md#account-invariant). Activity results preserve the terms version used for the request; an exact retry preserves the original outcome.
+See [Account reconciliation](verification.md#account-reconciliation) for the derived balance check. Activity results preserve the terms version used for the request; an exact retry preserves the original outcome.
 
 ## Version history
 

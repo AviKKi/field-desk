@@ -2,7 +2,7 @@ digraph ReturnSettlement {
   graph [rankdir=TB, bgcolor="white", pad=0.4, nodesep=0.5, ranksep=0.55, fontname="Helvetica", fontsize=20, label="Physical return and settlement", labelloc=t];
   node [shape=box, style="rounded,filled", fillcolor="#eef4fc", color="#6483a8", fontname="Helvetica", fontsize=13, margin="0.18,0.12"];
   edge [color="#73869c", fontname="Helvetica", fontsize=11, arrowsize=0.7];
-  receive [label="Record physical receipt\nRET-001 / RET-003"];
+  receive [label="Record physical receipt\nRET-001"];
   value [label="Value at shipment-line prices\nRecord explicit deduction\nRET-002"];
   reduce [label="Reduce original goods charges\nin recording order\nWF-003"];
   excess [shape=diamond, fillcolor="#fff7e8", label="Settlement exceeds\nretained charge value?\nACC-001 / WF-003"];
@@ -10,7 +10,7 @@ digraph ReturnSettlement {
   fee [label="Record fee charge\nUse released cash for fee first\nWF-003"];
   reserve [label="Reserve residual released cash\nas receipt-backed credit\nWF-003"];
   allocate [label="Allocate remaining free cash\nACC-003 / WF-002"];
-  rewards [label="Adjust reward postings\nREW-005", fillcolor="#e3f3ea"];
+  rewards [label="Reward balances\nREW-001 / REW-002 / REW-003", fillcolor="#e3f3ea"];
   receive -> value -> reduce -> excess;
   excess -> release [label="Yes"];
   excess -> fee [label="No"];

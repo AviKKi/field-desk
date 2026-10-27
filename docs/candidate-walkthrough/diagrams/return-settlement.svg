@@ -15,7 +15,7 @@
 <title>receive</title>
 <path fill="#eef4fc" stroke="#6483a8" d="M332.67,-876.3C332.67,-876.3 190.5,-876.3 190.5,-876.3 184.5,-876.3 178.5,-870.3 178.5,-864.3 178.5,-864.3 178.5,-844.02 178.5,-844.02 178.5,-838.02 184.5,-832.02 190.5,-832.02 190.5,-832.02 332.67,-832.02 332.67,-832.02 338.67,-832.02 344.67,-838.02 344.67,-844.02 344.67,-844.02 344.67,-864.3 344.67,-864.3 344.67,-870.3 338.67,-876.3 332.67,-876.3"/>
 <text xml:space="preserve" text-anchor="middle" x="261.59" y="-855.31" font-family="Helvetica,sans-Serif" font-size="13.00">Record physical receipt</text>
-<text xml:space="preserve" text-anchor="middle" x="261.59" y="-841.81" font-family="Helvetica,sans-Serif" font-size="13.00">RET&#45;001 / RET&#45;003</text>
+<text xml:space="preserve" text-anchor="middle" x="261.59" y="-841.81" font-family="Helvetica,sans-Serif" font-size="13.00">RET&#45;001</text>
 </g>
 <!-- value -->
 <g id="node2" class="node">
@@ -125,9 +125,9 @@
 <!-- rewards -->
 <g id="node9" class="node">
 <title>rewards</title>
-<path fill="#e3f3ea" stroke="#6483a8" d="M330.8,-44.28C330.8,-44.28 192.38,-44.28 192.38,-44.28 186.38,-44.28 180.38,-38.28 180.38,-32.28 180.38,-32.28 180.38,-12 180.38,-12 180.38,-6 186.38,0 192.38,0 192.38,0 330.8,0 330.8,0 336.8,0 342.8,-6 342.8,-12 342.8,-12 342.8,-32.28 342.8,-32.28 342.8,-38.28 336.8,-44.28 330.8,-44.28"/>
-<text xml:space="preserve" text-anchor="middle" x="261.59" y="-23.29" font-family="Helvetica,sans-Serif" font-size="13.00">Adjust reward postings</text>
-<text xml:space="preserve" text-anchor="middle" x="261.59" y="-9.79" font-family="Helvetica,sans-Serif" font-size="13.00">REW&#45;005</text>
+<path fill="#e3f3ea" stroke="#6483a8" d="M360.42,-44.28C360.42,-44.28 162.75,-44.28 162.75,-44.28 156.75,-44.28 150.75,-38.28 150.75,-32.28 150.75,-32.28 150.75,-12 150.75,-12 150.75,-6 156.75,0 162.75,0 162.75,0 360.42,0 360.42,0 366.42,0 372.42,-6 372.42,-12 372.42,-12 372.42,-32.28 372.42,-32.28 372.42,-38.28 366.42,-44.28 360.42,-44.28"/>
+<text xml:space="preserve" text-anchor="middle" x="261.59" y="-23.29" font-family="Helvetica,sans-Serif" font-size="13.00">Reward balances</text>
+<text xml:space="preserve" text-anchor="middle" x="261.59" y="-9.79" font-family="Helvetica,sans-Serif" font-size="13.00">REW&#45;001 / REW&#45;002 / REW&#45;003</text>
 </g>
 <!-- allocate&#45;&gt;rewards -->
 <g id="edge9" class="edge">

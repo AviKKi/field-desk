@@ -31,6 +31,19 @@ The service integration suite uses test-only fixtures to check role boundaries a
 
 The seed suite verifies all six commercial states and seven fulfillment states across the 24 seeded orders, checks customer balances and reward buckets, and verifies that legacy workflow tables are absent. It also verifies reruns by another administrator, preservation of manual changes, rollback after a missing staff role, rebuilding an empty test database, and production/access restrictions.
 
+## Account reconciliation
+
+This check is derived from the [canonical business rules](candidate-walkthrough/canonical_business_rules.md), not an additional policy. For one customer, let $G$ be confirmed delivery value, $V$ returned value, $\Phi$ return deductions, $M$ receipts, $F$ net refunds, and $Z$ net redeemed points. With outstanding charges $b_j$, free cash $u_i$, and open credit $O_n$:
+
+$$
+G-V+\Phi-M+F-Z
+=\sum_j b_j-\sum_i u_i-\sum_n O_n.
+$$
+
+Positive value means the customer owes money; negative value means value is owed to the customer.
+
+![Account reconciliation dependencies](candidate-walkthrough/diagrams/account-dependencies.svg)
+
 ## Recorded evidence
 
 `pnpm test` generates `reports/customer-workflows.json` with each independent workflow outcome, the operating-term version, the sequence seed convention, action response times, and a memory sample. `complete` requires every expected case to finish successfully. The test command's exit status also covers other suites and setup/teardown failures; the JSON file alone is not a substitute for that status.

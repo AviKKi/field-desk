@@ -11,9 +11,9 @@ digraph AccountDependencies {
   due [label="Outstanding charges\nACC-001"];
   cash [label="Free receipt cash\nACC-002"];
   credit [label="Open funded credit\nCRD-001"];
-  economic [label="Economic position\nWF-006"];
-  balances [label="Due minus free cash minus open credit\nWF-006"];
-  equal [shape=diamond, fillcolor="#e3f3ea", label="Equal\nWF-006"];
+  economic [label="Economic position"];
+  balances [label="Due minus free cash minus open credit"];
+  equal [shape=diamond, fillcolor="#e3f3ea", label="Reconciled"];
   delivery -> charges;
   returns -> charges;
   charges -> due;
