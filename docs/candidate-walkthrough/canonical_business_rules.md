@@ -1,22 +1,6 @@
 # Canonical business rules
 
-Operating conventions **2026-10-26.1**. Module policies precede intermodule workflows. See [Business terms](business_terms.md) for entities and roles.
-
-## Notation
-
-Money is in integer INR paise; quantities and points are integers. A prime denotes the resulting value. An operation quantity or amount is positive unless its rule explicitly permits zero. All sums of postings are signed, including reversals. Recording order means the order in which facts were recorded.
-
-| Symbol                | Business fact                                                                                |
-| --------------------- | -------------------------------------------------------------------------------------------- |
-| $l,h,j,i,n$           | Commercial line, shipment line, charge, receipt, credit note.                                |
-| $Q_l,C_l,S_l,R_l,L_l$ | Ordered, canceled, dispatched, returned, and currently loading units of a commercial line.   |
-| $s_h,d_h,r_h$         | Dispatched, gross delivered, and returned units of a shipment line.                          |
-| $p_l,\rho_l,p_h$      | Agreed commercial price, commercial points per unit, and shipment-line price.                |
-| $v_j,c_j,k_j,z_j,b_j$ | Retained charge value, cash applied, credit applied, points applied, and outstanding amount. |
-| $m_i,a_i,f_i,u_i$     | Receipt amount, net cash allocated, credit funding reserved, and free cash.                  |
-| $I_n,K_n,F_n,O_n$     | Issued credit, net applications, net refunds, and open credit.                               |
-
-Commercial physical totals sum their shipment-line facts. Loading counts only batches still `LOADING`; voided batches do not reserve demand. Retained charge value is the original charge plus its signed adjustments. Receipt funding is the sum of its reservations across credit notes.
+Operating conventions **2026-10-26.1**. Module policies precede intermodule workflows. See [Business terms](business_terms.md) for entities and roles, and [Appendix A](#appendix-a-notation) for notation.
 
 ## Module specifications
 
@@ -223,6 +207,35 @@ $$
 $$
 
 ![Return settlement flow](diagrams/return-settlement.svg)
+
+## Appendix A. Notation
+
+### Conventions
+
+Money is in integer INR paise; quantities and points are integers. An operation quantity or amount is positive unless explicitly permitted to be zero.
+
+A prime denotes the resulting value. Posting totals include signed reversals. Recording order is the order in which facts were recorded.
+
+### Symbols
+
+| Symbol                | Business fact                                                                                |
+| --------------------- | -------------------------------------------------------------------------------------------- |
+| $l,h,j,i,n$           | Commercial line, shipment line, charge, receipt, credit note.                                |
+| $Q_l,C_l,S_l,R_l,L_l$ | Ordered, canceled, dispatched, returned, and currently loading units of a commercial line.   |
+| $s_h,d_h,r_h$         | Dispatched, gross delivered, and returned units of a shipment line.                          |
+| $p_l,\rho_l,p_h$      | Agreed commercial price, commercial points per unit, and shipment-line price.                |
+| $v_j,c_j,k_j,z_j,b_j$ | Retained charge value, cash applied, credit applied, points applied, and outstanding amount. |
+| $m_i,a_i,f_i,u_i$     | Receipt amount, net cash allocated, credit funding reserved, and free cash.                  |
+| $I_n,K_n,F_n,O_n$     | Issued credit, net applications, net refunds, and open credit.                               |
+
+### Quantity and value definitions
+
+| Term                       | Definition                                             |
+| -------------------------- | ------------------------------------------------------ |
+| Commercial physical totals | Sum of the corresponding shipment-line facts.          |
+| Currently loading units    | Units reserved by batches still `LOADING`.             |
+| Retained charge value      | Original charge plus its signed adjustments.           |
+| Receipt funding            | Sum of the receipt's reservations across credit notes. |
 
 ## Related
 
